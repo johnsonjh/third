@@ -1,0 +1,104 @@
+(	THIRD for the Z80 under CP/M
+
+(	All code files will end with .z80
+
+	suffix .z80
+
+(	Assembly-language header
+
+	copy header
+
+(	This is a 16-bit RAM-based system
+
+	cellsize 2 wordsize 2 bits 16
+	ramsys MathStackGrowsUp
+
+(	We need a few words with fixed word numbers for the startup code.
+
+	assign 1000 (cold)		( Execution begins here
+	assign 1001 (lastword)		( Last word in the dictionary
+
+	rambase StupidRamBase
+
+(	Here comes the base vocabulary
+
+	prefix ../source/
+	include core.qdl
+
+(	Here comes the compiling words
+
+	include compile.qdl
+
+(	Project-specific words
+
+\ 	?EMIT             M: ( -> Flag )
+\ 	                  R: ( -> )
+\ 
+\ 	If the console is ready to accept a character, a non-zero flag
+\ 	is pushed onto the math stack. Otherwise, a zero flag is pushed.
+\ 	The work is actually done by machine code at label MSQE.
+
+	code ?emit msqe pc! ? ;
+
+\ 	(EMIT)              M: ( Character -> )
+\ 	                    R: ( -> )
+\ 
+\ 	Displays the character from the top of the math stack on the
+\ 	console. The character is dropped. The console is assumed to
+\ 	be ready to print. Handled by machine code at label MSE.
+
+	code (emit) mse pc! ? ;
+
+\ 	EMIT                M: ( Character -> )
+\ 	                    R: ( -> )
+\ 
+\ 	Waits for the console to become ready then displays the character
+\	at the top of the math stack.
+
+	: emit %repeat ?emit %until (emit) ;
+
+\ 	?KEY              M: ( -> Flag )
+\ 	                  R: ( -> )
+\ 
+\ 	If the console has received a character, a non-zero flag is
+\ 	pushed onto the math sack. Otherwise, a zero flag is pushed.
+\ 	The work is actually done by machine code at label MSQK.
+
+
+	code ?key msqk pc! ? ;
+
+\	(KEY)               M: ( -> Character )
+\ 
+\ 	Reads a character from the console and pushes it onto the
+\ 	math stack. It is assumed the console is ready to supply a
+\ 	character. Handled by machine code at label MSK.
+
+	code (key) msk pc! ? ;
+
+\ 	KEY                 M: ( -> Character )
+\ 	                    R: ( -> )
+\ 
+\ 	Waits for a character to become available at the console and
+\ 	then fetches it.
+
+	: key %repeat ?key %until (key) 0x7f and ;
+
+\ 	BYE			Special!
+\ 
+\ 	Exits to the operating system.
+
+	code bye msbye pc! ? ;
+
+\ 	(LASTWORD)              M: ( -> )
+\ 	                        R: ( -> )
+\ 
+\ 	Doesn't do anything, but lets us find the last word in the
+\ 	dictionary so we can initialize InitialLAST.
+
+	: (lastword) ;
+
+(	Assembly language trailer
+
+	noprefix
+	dump
+	copy trailer

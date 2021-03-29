@@ -1,0 +1,798 @@
+	*20
+/------------------------------------------------------------------------
+/
+/ File:	header.pal8
+/
+/ Description:
+/
+/	This file contains the variables and routines needed to
+/	implement the Stupid VM used by the PDP/8 version of THIRD.
+/	This VM is implemented as subroutine calls to the routines that
+/	implement each THIRD Stupid operation. The Stupid operations
+/	use a limited-depth stack-based model as a basis from which
+/	to build the THIRD environment. The actual routines implemented
+/	here are precisely those needed to implement the THIRD
+/	environment; i.e., no operations are implemented that are
+/	not actually used by THIRD.
+/
+/ Revisions:
+/
+/	09/10/99 RLI - Initial version for 68HC908GP20 on the AVNET
+/		       evaluation module.
+/	09/14/99 RLI - Moved most of the stuff to trailer.as6808
+/	04/19/01 RLI - Liberated and made into Z80 version. This is
+/	               currently targetted to run under CP/M.
+/	05/03/01 RLI - Liberated and made into PDP-8 version. This is
+/	               targeted to run standalone with a standard console.
+
+
+/	Here's the math stack
+
+StupidR0,	0
+StupidR1,	0
+StupidR2,	0
+StupidR3,	0
+
+/	An extra register to handle SWAP
+
+StupidSwapReg,	0
+
+/	Many of the Stupid global registers are pseudo-registers
+/	implemented by stuffing in constants as the Stupid VM fetch
+/	for that register. Here are the globals which actually
+/	require storage behind them.
+
+StupidCFA,	0
+StupidIP,	0
+StupidMP,	0
+StupidRP,	0
+
+/	Handy vector to Next.
+
+Next,	SL1
+
+/	Vectors to the code which actually implement the Stupid VM
+/	operations. Placing these vectors here allows all of the
+/	Stupid VM operations to be invoked with a single word;
+/	a JMS I through the vector location in page 0.
+
+StupidAnd1,
+	DoStupidAnd1
+StupidDup1,
+	DoStupidDup1
+StupidElseGo0,
+	DoStupidElseGo0
+StupidFetch0,
+	DoStupidFetch0
+StupidFetch1,
+	DoStupidFetch1
+StupidFetchCFA0,
+	DoStupidFetchCFA0
+StupidFetchCFA1,
+	DoStupidFetchCFA1
+StupidFetchIP0,
+	DoStupidFetchIP0
+StupidFetchIP1,
+	DoStupidFetchIP1
+StupidFetchInitialDP0,
+	DoStupidFetchInitialDP0
+StupidFetchInitialLAST0,
+	DoStupidFetchInitialLAST0
+StupidFetchInitialMP0,
+	DoStupidFetchInitialMP0
+StupidFetchInitialRP0,
+	DoStupidFetchInitialRP0
+StupidFetchMP0,
+	DoStupidFetchMP0
+StupidFetchMP1,
+	DoStupidFetchMP1
+StupidFetchMP2,
+	DoStupidFetchMP2
+StupidFetchMP3,
+	DoStupidFetchMP3
+StupidFetchNEXT0,
+	DoStupidFetchNEXT0
+StupidFetchRP0,
+	DoStupidFetchRP0
+StupidFetchRP1,
+	DoStupidFetchRP1
+StupidFetchRP2,
+	DoStupidFetchRP2
+StupidLessGo1,
+	DoStupidLessGo1
+StupidLiteral0,
+	DoStupidLiteral0
+StupidLiteral1,
+	DoStupidLiteral1
+StupidLiteral2,
+	DoStupidLiteral2
+StupidMinus1,
+	DoStupidMinus1
+StupidMinus2,
+	DoStupidMinus2
+StupidMinus3,
+	DoStupidMinus3
+StupidNeg0,
+	DoStupidNeg0
+StupidNot0,
+	DoStupidNot0
+StupidOr1,
+	DoStupidOr1
+StupidPlus1,
+	DoStupidPlus1
+StupidPlus2,
+	DoStupidPlus2
+StupidShiftLeft1,
+	DoStupidShiftLeft1
+StupidShiftRight1,
+	DoStupidShiftRight1
+StupidStore1,
+	DoStupidStore1
+StupidStore2,
+	DoStupidStore2
+StupidStoreCFA0,
+	DoStupidStoreCFA0
+StupidStoreIP0,
+	DoStupidStoreIP0
+StupidStoreMP0,
+	DoStupidStoreMP0
+StupidStoreMP1,
+	DoStupidStoreMP1
+StupidStorePC0,
+	DoStupidStorePC0
+StupidStoreRP0,
+	DoStupidStoreRP0
+StupidSwap1,
+	DoStupidSwap1
+StupidSwap2,
+	DoStupidSwap2
+StupidSwap3,
+	DoStupidSwap3
+
+	EJECT
+	*200
+
+/	Execution begins here
+
+Reset,
+
+/	Initialize the THIRD virtual machine: we need to set up the
+/	stack pointers and IP.
+
+	CLA
+
+	TAD (ReturnStackBottom)
+	DCA StupidRP
+
+	TAD (MathStackBottom)
+	DCA StupidMP
+
+	TAD (W1000PFA)
+	DCA StupidIP
+
+	6040			/ TFL: Set console output ready flag
+
+	JMP I Next		/ Enter at Next
+
+/	InitialDP is the address of the first unused RAM location. The
+/	space allocated for new user-created words begins here.
+
+InitialDP= RamEnd
+
+/	InitialLAST is the address of the CFA of the last definition in
+/	the dictionary. We start by pointing it at (LASTWORD), which is given
+/	the fixed number 1001.
+
+InitialLAST= W1001CFA
+
+
+/---	StupidAnd1		R0 <- R0 AND R1
+
+DoStupidAnd1, .-.
+	CLA
+	TAD StupidR0
+	AND StupidR1
+	DCA StupidR0
+	JMP I DoStupidAnd1
+
+/---	StupidDup1		R1 <- R0
+
+DoStupidDup1, .-.
+	CLA
+	TAD StupidR0
+	DCA StupidR1
+	JMP I DoStupidDup1
+
+/---	StupidElseGo0		Branch if R0 = 0
+/
+/	The call is followed by a word containing the branch address.
+/	If R0 is not 0, this word must be skipped. Otherwise, the word
+/	is used as a branch address.
+
+DoStupidElseGo0, .-.
+	CLA
+	TAD StupidR0
+	SZA
+	JMP DoStupidElseGo0DontBranch
+
+/	We need to branch. Fetch the branch address (it's pointed to
+/	by the return address) and jump to it (there may be a more
+/	clever way to do this than to replace the return address with
+/	the branch address, but I'm not very bright).
+
+	CLA			/ Get branch address
+	TAD I DoStupidElseGo0
+	DCA DoStupidElseGo0	/ Jump to it
+	JMP I DoStupidElseGo0
+
+/	We don't need to branch. This is equivalent to branching to the
+/	word following the word we pulled. Increment the return address
+/	and jump to it.
+
+DoStupidElseGo0DontBranch,
+	ISZ DoStupidElseGo0	/ How likely we'll be called from 7777???
+	JMP I DoStupidElseGo0
+
+/---	StupidFetch0		R0 <- (R0)
+
+DoStupidFetch0, .-.
+	CLA
+	TAD I StupidR0
+	DCA StupidR0
+	JMP I DoStupidFetch0
+
+/---	StupidFetch1		R1 <- (R1)
+
+DoStupidFetch1, .-.
+	CLA
+	TAD I StupidR1
+	DCA StupidR1
+	JMP I DoStupidFetch1
+
+/---	StupidFetchCFA0		R0 <- CFA
+
+DoStupidFetchCFA0, .-.
+	CLA
+	TAD StupidCFA
+	DCA StupidR0
+	JMP I DoStupidFetchCFA0
+
+/---	StupidFetchCFA1		R1 <- CFA
+
+DoStupidFetchCFA1, .-.
+	CLA
+	TAD StupidCFA
+	DCA StupidR1
+	JMP I DoStupidFetchCFA1
+
+/---	StupidFetchIP0		R0 <- IP
+
+DoStupidFetchIP0, .-.
+	CLA
+	TAD StupidIP
+	DCA StupidR0
+	JMP I DoStupidFetchIP0
+
+/---	StupidFetchIP1		R1 <- IP
+
+DoStupidFetchIP1, .-.
+	CLA
+	TAD StupidIP
+	DCA StupidR1
+	JMP I DoStupidFetchIP1
+
+/---	StupidFetchInitialDP0	R0 <- InitialDP
+
+DoStupidFetchInitialDP0, .-.
+	CLA
+	TAD (InitialDP)
+	DCA StupidR0
+	JMP I DoStupidFetchInitialDP0
+
+/---	StupidFetchInitialLAST0	R0 <- InitialLAST
+
+DoStupidFetchInitialLAST0, .-.
+	CLA
+	TAD (InitialLAST)
+	DCA StupidR0
+	JMP I DoStupidFetchInitialLAST0
+
+/---	StupidFetchInitialMP0	R0 <- InitialMP
+
+DoStupidFetchInitialMP0, .-.
+	CLA
+	TAD (MathStackBottom)
+	DCA StupidR0
+	JMP I DoStupidFetchInitialMP0
+
+/---	StupidFetchInitialRP0	R0 <- InitialRP
+
+DoStupidFetchInitialRP0, .-.
+	CLA
+	TAD (ReturnStackBottom)
+	DCA StupidR0
+	JMP I DoStupidFetchInitialRP0
+
+/---	StupidFetchMP0		R0 <- MP
+
+DoStupidFetchMP0, .-.
+	CLA
+	TAD StupidMP
+	DCA StupidR0
+	JMP I DoStupidFetchMP0
+
+/---	StupidFetchMP1		R1 <- MP
+
+DoStupidFetchMP1, .-.
+	CLA
+	TAD StupidMP
+	DCA StupidR1
+	JMP I DoStupidFetchMP1
+
+/---	StupidFetchMP2		R2 <- MP
+
+DoStupidFetchMP2, .-.
+	CLA
+	TAD StupidMP
+	DCA StupidR2
+	JMP I DoStupidFetchMP2
+
+/---	StupidFetchMP3		R3 <- MP
+
+DoStupidFetchMP3, .-.
+	CLA
+	TAD StupidMP
+	DCA StupidR3
+	JMP I DoStupidFetchMP3
+
+/---	StupidFetchNEXT0	R0 <- Next:
+
+DoStupidFetchNEXT0, .-.
+	CLA
+	TAD Next		/ Next
+	DCA StupidR0
+	JMP I DoStupidFetchNEXT0
+
+/---	StupidFetchRP0		R0 <- RP
+
+DoStupidFetchRP0, .-.
+	CLA
+	TAD StupidRP
+	DCA StupidR0
+	JMP I DoStupidFetchRP0
+
+/---	StupidFetchRP1		R1 <- RP
+
+DoStupidFetchRP1, .-.
+	CLA
+	TAD StupidRP
+	DCA StupidR1
+	JMP I DoStupidFetchRP1
+
+/---	StupidFetchRP2		R2 <- RP
+
+DoStupidFetchRP2, .-.
+	CLA
+	TAD StupidRP
+	DCA StupidR2
+	JMP I DoStupidFetchRP2
+
+	PAGE
+/---	StupidLessGo1		Branch if r0<r1
+/
+/	The call to StupidLessGo is followed by a word containing the
+/	address to which the branch is to be made. If the branch is
+/	not made, that word must be skipped.
+
+DoStupidLessGo1, .-.
+
+/	Determine whether R0 is less than R1 by subtracting R1 from R0.
+/	If there's a carry out, R0 is less than R1.
+
+	CLA CLL
+	TAD StupidR1		/ Form -R1
+	CMA IAC			/ Can link become set here???
+	TAD StupidR0		/ Form R0-R1. Link becomes set on carry.
+	SNL			/ If no link, don't branch.
+	JMP DoStupidLessGo1Branch
+
+/	We don't need to branch. Skip the branch address and return.
+
+	ISZ DoStupidLessGo1	/ How likely we'll be called from 7777???
+	JMP I DoStupidLessGo1
+
+DoStupidLessGo1Branch,
+
+/	We need to branch. Replace the return address with the branch
+/	address.
+
+	CLA
+	TAD I DoStupidLessGo1
+	DCA DoStupidLessGo1
+	JMP I DoStupidLessGo1
+
+/---	StupidLiteral0		R0 <- Literal
+/
+/	The call to StupidLiteralx is followed by a word containing the
+/	literal. The literal needs to be loaded into the register and
+/	the word containing the literal needs to be skipped.
+
+DoStupidLiteral0, .-.
+	CLA
+	TAD I DoStupidLiteral0
+	DCA StupidR0
+	ISZ DoStupidLiteral0	/ How likely we'll be called from 7777???
+	JMP I DoStupidLiteral0
+
+/---	StupidLiteral1		R1 <- Literal
+
+DoStupidLiteral1, .-.
+	CLA
+	TAD I DoStupidLiteral1
+	DCA StupidR1
+	ISZ DoStupidLiteral1	/ How likely we'll be called from 7777???
+	JMP I DoStupidLiteral1
+
+/---	StupidLiteral2		R2 <- Literal
+
+DoStupidLiteral2, .-.
+	CLA
+	TAD I DoStupidLiteral2
+	DCA StupidR2
+	ISZ DoStupidLiteral2	/ How likely we'll be called from 7777???
+	JMP I DoStupidLiteral2
+
+/---	StupidMinus1		R0 <- R0 - R1
+
+DoStupidMinus1, .-.
+	CLA
+	TAD StupidR1		/ Form -R1
+	CMA IAC
+	TAD StupidR0		/ Form R0-R1
+	DCA StupidR0
+	JMP I DoStupidMinus1
+
+/---	StupidMinus2		R1 <- R1 - R2
+
+DoStupidMinus2, .-.
+	CLA
+	TAD StupidR2		/ Form -R2
+	CMA IAC
+	TAD StupidR1		/ Form R1-R2
+	DCA StupidR1
+	JMP I DoStupidMinus2
+
+/---	StupidMinus3		R2 <- R2 - R3
+
+DoStupidMinus3, .-.
+	CLA
+	TAD StupidR3		/ Form -R3
+	CMA IAC
+	TAD StupidR2		/ Form R2-R3
+	DCA StupidR2
+	JMP I DoStupidMinus3
+
+/---	StupidNeg0		R0 <- 0 - R0
+
+DoStupidNeg0, .-.
+	CLA
+	TAD StupidR0
+	CMA IAC
+	DCA StupidR0
+	JMP I DoStupidNeg0
+
+/---	StupidNot0		R0 <- ~R0
+
+DoStupidNot0, .-.
+	CLA
+	TAD StupidR0
+	CMA
+	DCA StupidR0
+	JMP I DoStupidNot0
+
+/---	StupidOr1		R0 <- R0 or R1
+/
+/	OK, this is a little complicated. We need to clear the bits in
+/	R0 that are also set in R1 and then add R0 and R1 together.
+
+DoStupidOr1, .-.
+	CLA
+	TAD StupidR1		/ Form ~R1
+	CMA
+	AND StupidR0		/ Form R0&~R1. This clears bits in R0
+				/ which are also set in R1.
+	TAD StupidR1		/ Add the set bits back in.
+	DCA StupidR0
+	JMP I DoStupidOr1
+
+/---	StupidPlus1		R0 <- R0 + R1
+
+DoStupidPlus1, .-.
+	CLA
+	TAD StupidR0
+	TAD StupidR1
+	DCA StupidR0
+	JMP I DoStupidPlus1
+
+/---	StupidPlus2		R1 <- R1 + R2
+
+DoStupidPlus2, .-.
+	CLA
+	TAD StupidR2
+	TAD StupidR1
+	DCA StupidR1
+	JMP I DoStupidPlus2
+
+/---	StupidPlus3		R2 <- R2 + R3
+
+DoStupidPlus3, .-.
+	CLA
+	TAD StupidR3
+	TAD StupidR2
+	DCA StupidR2
+	JMP I DoStupidPlus3
+
+/---	StupidShiftLeft1	R0 <- R0 << R1
+/
+/	This is a little complicated, too. We need the two's complement
+/	of the bit shift count for ISZ, but we also need to not do anything
+/	if the count is 0.
+
+DoStupidShiftLeft1, .-.
+
+/	Fetch the bit count. If it's zero, exit without doing anything.
+
+	CLA
+	TAD StupidR1
+	SNA
+	JMP I DoStupidShiftLeft1
+
+/	Form the two's complement of the bit count.
+
+	CMA IAC
+	DCA StupidR1
+
+/	Fetch the victim and shift it left until the count rolls over.
+
+	TAD StupidR0
+DoStupidShiftLeft1Loop,
+	CLL RAL			/ Clear link to make it a shift
+	ISZ StupidR1
+	JMP DoStupidShiftLeft1Loop
+
+/	We're done. Store the result and exit.
+
+	DCA StupidR0
+	JMP I DoStupidShiftLeft1
+
+/---	StupidShiftRight1	R0 <- R0 >> R1
+/
+/	See StupidShiftLeft1.
+
+DoStupidShiftRight1, .-.
+
+/	Fetch the bit count. If it's zero, exit without doing anything.
+
+	CLA
+	TAD StupidR1
+	SNA
+	JMP I DoStupidShiftRight1
+
+/	Form the two's complement of the bit count.
+
+	CMA IAC
+	DCA StupidR1
+
+/	Fetch the victim and shift it right until the count rolls over.
+
+	TAD StupidR0
+DoStupidShiftRight1Loop,
+	CLL RAR			/ Clear link to make it a shift
+	ISZ StupidR1
+	JMP DoStupidShiftRight1Loop
+
+/	We're done. Store the result and exit.
+
+	DCA StupidR0
+	JMP I DoStupidShiftRight1
+
+/---	StupidStore1		(R1) <- R0
+
+DoStupidStore1, .-.
+	CLA
+	TAD StupidR0
+	DCA I StupidR1
+	JMP I DoStupidStore1
+
+/---	StupidStore2		(R2) <- R1
+
+DoStupidStore2, .-.
+	CLA
+	TAD StupidR1
+	DCA I StupidR2
+	JMP I DoStupidStore2
+
+	PAGE
+/---	StupidStoreCFA0		CFA <- R0
+
+DoStupidStoreCFA0, .-.
+	CLA
+	TAD StupidR0
+	DCA StupidCFA
+	JMP I DoStupidStoreCFA0
+
+/---	StupidStoreIP0		IP <- R0
+
+DoStupidStoreIP0, .-.
+	CLA
+	TAD StupidR0
+	DCA StupidIP
+	JMP I DoStupidStoreIP0
+
+/---	StupidStoreMP0		MP <- R0
+
+DoStupidStoreMP0, .-.
+	CLA
+	TAD StupidR0
+	DCA StupidMP
+	JMP I DoStupidStoreMP0
+
+/---	StupidStoreMP1		MP <- R1
+
+DoStupidStoreMP1, .-.
+	CLA
+	TAD StupidR1
+	DCA StupidMP
+	JMP I DoStupidStoreMP1
+
+/---	StupidStorePC0		Jump to address in R0
+/
+/	Also, return address on stack must be cleaned up.
+
+DoStupidStorePC0, .-.
+	JMP I StupidR0
+
+/---	StupidStoreRP0		RP <- R0
+
+DoStupidStoreRP0, .-.
+	CLA
+	TAD StupidR0
+	DCA StupidRP
+	JMP I DoStupidStoreRP0
+
+/---	StupidSwap1	SwapReg <- R0, R0 <- R1, R1 <- SwapReg
+/
+/	Swaps the top two items on the stack.
+
+DoStupidSwap1, .-.
+	CLA
+	TAD StupidR0
+	DCA StupidSwapReg
+	TAD StupidR1
+	DCA StupidR0
+	TAD StupidSwapReg
+	DCA StupidR1
+	JMP I DoStupidSwap1
+
+/---	StupidSwap2	SwapReg <- R1, R1 <- R2, R2 <- SwapReg
+/
+/	Swaps the top two items on the stack.
+
+DoStupidSwap2, .-.
+	CLA
+	TAD StupidR1
+	DCA StupidSwapReg
+	TAD StupidR2
+	DCA StupidR1
+	TAD StupidSwapReg
+	DCA StupidR2
+	JMP I DoStupidSwap2
+
+/---	StupidSwap3	SwapReg <- R2, R2 <- R3, R3 <- SwapReg
+/
+/	Swaps the top two items on the stack.
+
+DoStupidSwap3, .-.
+	CLA
+	TAD StupidR2
+	DCA StupidSwapReg
+	TAD StupidR3
+	DCA StupidR2
+	TAD StupidSwapReg
+	DCA StupidR3
+	JMP I DoStupidSwap3
+
+/---	MSQE		M: ( -> Flag )
+/			R: ( -> )
+/
+/	Machine-specific code for ?EMIT. Tests to see if the console
+/	is ready to accept a character, pushing the result on the
+/	math stack. If the console can accept a character, a non-zero
+/	flag is pushed. Otherwise, a zero flag is pushed.
+
+MSQE,	ISZ StupidMP	/ Make space for the flag
+
+	CLA IAC		/ Assume we'll skip (it can print)
+	TSF
+	CLA		/ It's not ready
+
+	DCA I StupidMP	/ Store the flag
+
+	JMP I Next	/ Next word
+
+/---	MSE		M: ( Character -> )
+/			R: ( -> )
+/
+/	Machine specific code for (EMIT). Puts a character on the
+/	console then drops it from the math stack.
+
+MSE,	CLA		/ Get the character
+	TAD I StupidMP
+
+	TPC		/ Print the character
+
+	CLA		/ Drop one from the math stack
+	TAD StupidMP
+	CMA IAC;CMA
+	DCA StupidMP
+
+	JMP I Next	/ Next
+
+/---	MSQK		M: ( -> Flag )
+/			R: ( -> )
+/
+/	Machine specific code for ?KEY. Tests the console to see if a
+/	character is available. If so, a non-zero flag is pushed. 
+/	Otherwise a zero flag is pushed.
+
+MSQK,	ISZ StupidMP	/ Make space for the flag
+
+	CLA IAC		/ Assume we'll skip (it's ready)
+	KSF
+	CLA		/ Didn't skip; it's not.
+
+	DCA I StupidMP	/ Store the flag
+
+	JMP I Next	/ Next
+
+/---	MSK		M: ( -> Character )
+/			R:
+/
+/	Machine specific code for (KEY). Reads a character from the
+/	console, pushing it on the math stack.
+
+MSK,	ISZ StupidMP	/ Make space for the character
+	KRB		/ Get the character
+	DCA I StupidMP	/ Store the character
+	JMP I Next	/ Next
+
+/---	MSBYE
+/
+/
+/	Machine-specific code for BYE. Since we don't have an OS, we
+/	just halt and then restart if anyone's foolish enough to restart.
+
+MSBYE,	HLT
+	JMP I MSBYE1
+MSBYE1,	Reset
+
+	EJECT
+
+/	Space for the THIRD stacks. We're going to grow the
+/	math stack up and the return stack down so that they
+/	can dynamically share a block of space.
+
+MathStackBottom,
+	0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0
+	0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0
+	0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0
+	0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0
+	0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0
+	0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0
+	0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0
+	0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0
+ReturnStackBottom,
+StupidRamBase,
+	PAGE
+	EJECT
+

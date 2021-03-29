@@ -1,0 +1,13 @@
+This is a version of THIRD for the Z80. It is intended to run under CP/M.
+It was done as a test of the portability of THIRD to an 8-bit processor.
+
+NOTE: I don't currently have a working CP/M setup, so I can't verify this
+version is current or operational.
+
+The assembly is targeted for the ASXXXX assemblers, specifically, V03.00.
+
+The QDL source for the Z80 version depends upon the system-independent 
+sources, and a Z80 header and a trailer (that I can't seem to find.) 
+
+I think, but cannot currently verify, that these sources were used to
+produce the included executable.

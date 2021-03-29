@@ -1,0 +1,6972 @@
+	*20
+/------------------------------------------------------------------------
+/
+/ File:	header.pal8
+/
+/ Description:
+/
+/	This file contains the variables and routines needed to
+/	implement the Stupid VM used by the PDP/8 version of THIRD.
+/	This VM is implemented as subroutine calls to the routines that
+/	implement each THIRD Stupid operation. The Stupid operations
+/	use a limited-depth stack-based model as a basis from which
+/	to build the THIRD environment. The actual routines implemented
+/	here are precisely those needed to implement the THIRD
+/	environment; i.e., no operations are implemented that are
+/	not actually used by THIRD.
+/
+/ Revisions:
+/
+/	09/10/99 RLI - Initial version for 68HC908GP20 on the AVNET
+/		       evaluation module.
+/	09/14/99 RLI - Moved most of the stuff to trailer.as6808
+/	04/19/01 RLI - Liberated and made into Z80 version. This is
+/	               currently targetted to run under CP/M.
+/	05/03/01 RLI - Liberated and made into PDP-8 version. This is
+/	               targeted to run standalone with a standard console.
+
+
+/	Here's the math stack
+
+StupidR0,	0
+StupidR1,	0
+StupidR2,	0
+StupidR3,	0
+
+/	An extra register to handle SWAP
+
+StupidSwapReg,	0
+
+/	Many of the Stupid global registers are pseudo-registers
+/	implemented by stuffing in constants as the Stupid VM fetch
+/	for that register. Here are the globals which actually
+/	require storage behind them.
+
+StupidCFA,	0
+StupidIP,	0
+StupidMP,	0
+StupidRP,	0
+
+/	Handy vector to Next.
+
+Next,	SL1
+
+/	Vectors to the code which actually implement the Stupid VM
+/	operations. Placing these vectors here allows all of the
+/	Stupid VM operations to be invoked with a single word;
+/	a JMS I through the vector location in page 0.
+
+StupidAnd1,
+	DoStupidAnd1
+StupidDup1,
+	DoStupidDup1
+StupidElseGo0,
+	DoStupidElseGo0
+StupidFetch0,
+	DoStupidFetch0
+StupidFetch1,
+	DoStupidFetch1
+StupidFetchCFA0,
+	DoStupidFetchCFA0
+StupidFetchCFA1,
+	DoStupidFetchCFA1
+StupidFetchIP0,
+	DoStupidFetchIP0
+StupidFetchIP1,
+	DoStupidFetchIP1
+StupidFetchInitialDP0,
+	DoStupidFetchInitialDP0
+StupidFetchInitialLAST0,
+	DoStupidFetchInitialLAST0
+StupidFetchInitialMP0,
+	DoStupidFetchInitialMP0
+StupidFetchInitialRP0,
+	DoStupidFetchInitialRP0
+StupidFetchMP0,
+	DoStupidFetchMP0
+StupidFetchMP1,
+	DoStupidFetchMP1
+StupidFetchMP2,
+	DoStupidFetchMP2
+StupidFetchMP3,
+	DoStupidFetchMP3
+StupidFetchNEXT0,
+	DoStupidFetchNEXT0
+StupidFetchRP0,
+	DoStupidFetchRP0
+StupidFetchRP1,
+	DoStupidFetchRP1
+StupidFetchRP2,
+	DoStupidFetchRP2
+StupidLessGo1,
+	DoStupidLessGo1
+StupidLiteral0,
+	DoStupidLiteral0
+StupidLiteral1,
+	DoStupidLiteral1
+StupidLiteral2,
+	DoStupidLiteral2
+StupidMinus1,
+	DoStupidMinus1
+StupidMinus2,
+	DoStupidMinus2
+StupidMinus3,
+	DoStupidMinus3
+StupidNeg0,
+	DoStupidNeg0
+StupidNot0,
+	DoStupidNot0
+StupidOr1,
+	DoStupidOr1
+StupidPlus1,
+	DoStupidPlus1
+StupidPlus2,
+	DoStupidPlus2
+StupidShiftLeft1,
+	DoStupidShiftLeft1
+StupidShiftRight1,
+	DoStupidShiftRight1
+StupidStore1,
+	DoStupidStore1
+StupidStore2,
+	DoStupidStore2
+StupidStoreCFA0,
+	DoStupidStoreCFA0
+StupidStoreIP0,
+	DoStupidStoreIP0
+StupidStoreMP0,
+	DoStupidStoreMP0
+StupidStoreMP1,
+	DoStupidStoreMP1
+StupidStorePC0,
+	DoStupidStorePC0
+StupidStoreRP0,
+	DoStupidStoreRP0
+StupidSwap1,
+	DoStupidSwap1
+StupidSwap2,
+	DoStupidSwap2
+StupidSwap3,
+	DoStupidSwap3
+
+	EJECT
+	*200
+
+/	Execution begins here
+
+Reset,
+
+/	Initialize the THIRD virtual machine: we need to set up the
+/	stack pointers and IP.
+
+	CLA
+
+	TAD (ReturnStackBottom)
+	DCA StupidRP
+
+	TAD (MathStackBottom)
+	DCA StupidMP
+
+	TAD (W1000PFA)
+	DCA StupidIP
+
+	6040			/ TFL: Set console output ready flag
+
+	JMP I Next		/ Enter at Next
+
+/	InitialDP is the address of the first unused RAM location. The
+/	space allocated for new user-created words begins here.
+
+InitialDP= RamEnd
+
+/	InitialLAST is the address of the CFA of the last definition in
+/	the dictionary. We start by pointing it at (LASTWORD), which is given
+/	the fixed number 1001.
+
+InitialLAST= W1001CFA
+
+
+/---	StupidAnd1		R0 <- R0 AND R1
+
+DoStupidAnd1, .-.
+	CLA
+	TAD StupidR0
+	AND StupidR1
+	DCA StupidR0
+	JMP I DoStupidAnd1
+
+/---	StupidDup1		R1 <- R0
+
+DoStupidDup1, .-.
+	CLA
+	TAD StupidR0
+	DCA StupidR1
+	JMP I DoStupidDup1
+
+/---	StupidElseGo0		Branch if R0 = 0
+/
+/	The call is followed by a word containing the branch address.
+/	If R0 is not 0, this word must be skipped. Otherwise, the word
+/	is used as a branch address.
+
+DoStupidElseGo0, .-.
+	CLA
+	TAD StupidR0
+	SZA
+	JMP DoStupidElseGo0DontBranch
+
+/	We need to branch. Fetch the branch address (it's pointed to
+/	by the return address) and jump to it (there may be a more
+/	clever way to do this than to replace the return address with
+/	the branch address, but I'm not very bright).
+
+	CLA			/ Get branch address
+	TAD I DoStupidElseGo0
+	DCA DoStupidElseGo0	/ Jump to it
+	JMP I DoStupidElseGo0
+
+/	We don't need to branch. This is equivalent to branching to the
+/	word following the word we pulled. Increment the return address
+/	and jump to it.
+
+DoStupidElseGo0DontBranch,
+	ISZ DoStupidElseGo0	/ How likely we'll be called from 7777???
+	JMP I DoStupidElseGo0
+
+/---	StupidFetch0		R0 <- (R0)
+
+DoStupidFetch0, .-.
+	CLA
+	TAD I StupidR0
+	DCA StupidR0
+	JMP I DoStupidFetch0
+
+/---	StupidFetch1		R1 <- (R1)
+
+DoStupidFetch1, .-.
+	CLA
+	TAD I StupidR1
+	DCA StupidR1
+	JMP I DoStupidFetch1
+
+/---	StupidFetchCFA0		R0 <- CFA
+
+DoStupidFetchCFA0, .-.
+	CLA
+	TAD StupidCFA
+	DCA StupidR0
+	JMP I DoStupidFetchCFA0
+
+/---	StupidFetchCFA1		R1 <- CFA
+
+DoStupidFetchCFA1, .-.
+	CLA
+	TAD StupidCFA
+	DCA StupidR1
+	JMP I DoStupidFetchCFA1
+
+/---	StupidFetchIP0		R0 <- IP
+
+DoStupidFetchIP0, .-.
+	CLA
+	TAD StupidIP
+	DCA StupidR0
+	JMP I DoStupidFetchIP0
+
+/---	StupidFetchIP1		R1 <- IP
+
+DoStupidFetchIP1, .-.
+	CLA
+	TAD StupidIP
+	DCA StupidR1
+	JMP I DoStupidFetchIP1
+
+/---	StupidFetchInitialDP0	R0 <- InitialDP
+
+DoStupidFetchInitialDP0, .-.
+	CLA
+	TAD (InitialDP)
+	DCA StupidR0
+	JMP I DoStupidFetchInitialDP0
+
+/---	StupidFetchInitialLAST0	R0 <- InitialLAST
+
+DoStupidFetchInitialLAST0, .-.
+	CLA
+	TAD (InitialLAST)
+	DCA StupidR0
+	JMP I DoStupidFetchInitialLAST0
+
+/---	StupidFetchInitialMP0	R0 <- InitialMP
+
+DoStupidFetchInitialMP0, .-.
+	CLA
+	TAD (MathStackBottom)
+	DCA StupidR0
+	JMP I DoStupidFetchInitialMP0
+
+/---	StupidFetchInitialRP0	R0 <- InitialRP
+
+DoStupidFetchInitialRP0, .-.
+	CLA
+	TAD (ReturnStackBottom)
+	DCA StupidR0
+	JMP I DoStupidFetchInitialRP0
+
+/---	StupidFetchMP0		R0 <- MP
+
+DoStupidFetchMP0, .-.
+	CLA
+	TAD StupidMP
+	DCA StupidR0
+	JMP I DoStupidFetchMP0
+
+/---	StupidFetchMP1		R1 <- MP
+
+DoStupidFetchMP1, .-.
+	CLA
+	TAD StupidMP
+	DCA StupidR1
+	JMP I DoStupidFetchMP1
+
+/---	StupidFetchMP2		R2 <- MP
+
+DoStupidFetchMP2, .-.
+	CLA
+	TAD StupidMP
+	DCA StupidR2
+	JMP I DoStupidFetchMP2
+
+/---	StupidFetchMP3		R3 <- MP
+
+DoStupidFetchMP3, .-.
+	CLA
+	TAD StupidMP
+	DCA StupidR3
+	JMP I DoStupidFetchMP3
+
+/---	StupidFetchNEXT0	R0 <- Next:
+
+DoStupidFetchNEXT0, .-.
+	CLA
+	TAD Next		/ Next
+	DCA StupidR0
+	JMP I DoStupidFetchNEXT0
+
+/---	StupidFetchRP0		R0 <- RP
+
+DoStupidFetchRP0, .-.
+	CLA
+	TAD StupidRP
+	DCA StupidR0
+	JMP I DoStupidFetchRP0
+
+/---	StupidFetchRP1		R1 <- RP
+
+DoStupidFetchRP1, .-.
+	CLA
+	TAD StupidRP
+	DCA StupidR1
+	JMP I DoStupidFetchRP1
+
+/---	StupidFetchRP2		R2 <- RP
+
+DoStupidFetchRP2, .-.
+	CLA
+	TAD StupidRP
+	DCA StupidR2
+	JMP I DoStupidFetchRP2
+
+	PAGE
+/---	StupidLessGo1		Branch if r0<r1
+/
+/	The call to StupidLessGo is followed by a word containing the
+/	address to which the branch is to be made. If the branch is
+/	not made, that word must be skipped.
+
+DoStupidLessGo1, .-.
+
+/	Determine whether R0 is less than R1 by subtracting R1 from R0.
+/	If there's a carry out, R0 is less than R1.
+
+	CLA CLL
+	TAD StupidR1		/ Form -R1
+	CMA IAC			/ Can link become set here???
+	TAD StupidR0		/ Form R0-R1. Link becomes set on carry.
+	SNL			/ If no link, don't branch.
+	JMP DoStupidLessGo1Branch
+
+/	We don't need to branch. Skip the branch address and return.
+
+	ISZ DoStupidLessGo1	/ How likely we'll be called from 7777???
+	JMP I DoStupidLessGo1
+
+DoStupidLessGo1Branch,
+
+/	We need to branch. Replace the return address with the branch
+/	address.
+
+	CLA
+	TAD I DoStupidLessGo1
+	DCA DoStupidLessGo1
+	JMP I DoStupidLessGo1
+
+/---	StupidLiteral0		R0 <- Literal
+/
+/	The call to StupidLiteralx is followed by a word containing the
+/	literal. The literal needs to be loaded into the register and
+/	the word containing the literal needs to be skipped.
+
+DoStupidLiteral0, .-.
+	CLA
+	TAD I DoStupidLiteral0
+	DCA StupidR0
+	ISZ DoStupidLiteral0	/ How likely we'll be called from 7777???
+	JMP I DoStupidLiteral0
+
+/---	StupidLiteral1		R1 <- Literal
+
+DoStupidLiteral1, .-.
+	CLA
+	TAD I DoStupidLiteral1
+	DCA StupidR1
+	ISZ DoStupidLiteral1	/ How likely we'll be called from 7777???
+	JMP I DoStupidLiteral1
+
+/---	StupidLiteral2		R2 <- Literal
+
+DoStupidLiteral2, .-.
+	CLA
+	TAD I DoStupidLiteral2
+	DCA StupidR2
+	ISZ DoStupidLiteral2	/ How likely we'll be called from 7777???
+	JMP I DoStupidLiteral2
+
+/---	StupidMinus1		R0 <- R0 - R1
+
+DoStupidMinus1, .-.
+	CLA
+	TAD StupidR1		/ Form -R1
+	CMA IAC
+	TAD StupidR0		/ Form R0-R1
+	DCA StupidR0
+	JMP I DoStupidMinus1
+
+/---	StupidMinus2		R1 <- R1 - R2
+
+DoStupidMinus2, .-.
+	CLA
+	TAD StupidR2		/ Form -R2
+	CMA IAC
+	TAD StupidR1		/ Form R1-R2
+	DCA StupidR1
+	JMP I DoStupidMinus2
+
+/---	StupidMinus3		R2 <- R2 - R3
+
+DoStupidMinus3, .-.
+	CLA
+	TAD StupidR3		/ Form -R3
+	CMA IAC
+	TAD StupidR2		/ Form R2-R3
+	DCA StupidR2
+	JMP I DoStupidMinus3
+
+/---	StupidNeg0		R0 <- 0 - R0
+
+DoStupidNeg0, .-.
+	CLA
+	TAD StupidR0
+	CMA IAC
+	DCA StupidR0
+	JMP I DoStupidNeg0
+
+/---	StupidNot0		R0 <- ~R0
+
+DoStupidNot0, .-.
+	CLA
+	TAD StupidR0
+	CMA
+	DCA StupidR0
+	JMP I DoStupidNot0
+
+/---	StupidOr1		R0 <- R0 or R1
+/
+/	OK, this is a little complicated. We need to clear the bits in
+/	R0 that are also set in R1 and then add R0 and R1 together.
+
+DoStupidOr1, .-.
+	CLA
+	TAD StupidR1		/ Form ~R1
+	CMA
+	AND StupidR0		/ Form R0&~R1. This clears bits in R0
+				/ which are also set in R1.
+	TAD StupidR1		/ Add the set bits back in.
+	DCA StupidR0
+	JMP I DoStupidOr1
+
+/---	StupidPlus1		R0 <- R0 + R1
+
+DoStupidPlus1, .-.
+	CLA
+	TAD StupidR0
+	TAD StupidR1
+	DCA StupidR0
+	JMP I DoStupidPlus1
+
+/---	StupidPlus2		R1 <- R1 + R2
+
+DoStupidPlus2, .-.
+	CLA
+	TAD StupidR2
+	TAD StupidR1
+	DCA StupidR1
+	JMP I DoStupidPlus2
+
+/---	StupidPlus3		R2 <- R2 + R3
+
+DoStupidPlus3, .-.
+	CLA
+	TAD StupidR3
+	TAD StupidR2
+	DCA StupidR2
+	JMP I DoStupidPlus3
+
+/---	StupidShiftLeft1	R0 <- R0 << R1
+/
+/	This is a little complicated, too. We need the two's complement
+/	of the bit shift count for ISZ, but we also need to not do anything
+/	if the count is 0.
+
+DoStupidShiftLeft1, .-.
+
+/	Fetch the bit count. If it's zero, exit without doing anything.
+
+	CLA
+	TAD StupidR1
+	SNA
+	JMP I DoStupidShiftLeft1
+
+/	Form the two's complement of the bit count.
+
+	CMA IAC
+	DCA StupidR1
+
+/	Fetch the victim and shift it left until the count rolls over.
+
+	TAD StupidR0
+DoStupidShiftLeft1Loop,
+	CLL RAL			/ Clear link to make it a shift
+	ISZ StupidR1
+	JMP DoStupidShiftLeft1Loop
+
+/	We're done. Store the result and exit.
+
+	DCA StupidR0
+	JMP I DoStupidShiftLeft1
+
+/---	StupidShiftRight1	R0 <- R0 >> R1
+/
+/	See StupidShiftLeft1.
+
+DoStupidShiftRight1, .-.
+
+/	Fetch the bit count. If it's zero, exit without doing anything.
+
+	CLA
+	TAD StupidR1
+	SNA
+	JMP I DoStupidShiftRight1
+
+/	Form the two's complement of the bit count.
+
+	CMA IAC
+	DCA StupidR1
+
+/	Fetch the victim and shift it right until the count rolls over.
+
+	TAD StupidR0
+DoStupidShiftRight1Loop,
+	CLL RAR			/ Clear link to make it a shift
+	ISZ StupidR1
+	JMP DoStupidShiftRight1Loop
+
+/	We're done. Store the result and exit.
+
+	DCA StupidR0
+	JMP I DoStupidShiftRight1
+
+/---	StupidStore1		(R1) <- R0
+
+DoStupidStore1, .-.
+	CLA
+	TAD StupidR0
+	DCA I StupidR1
+	JMP I DoStupidStore1
+
+/---	StupidStore2		(R2) <- R1
+
+DoStupidStore2, .-.
+	CLA
+	TAD StupidR1
+	DCA I StupidR2
+	JMP I DoStupidStore2
+
+	PAGE
+/---	StupidStoreCFA0		CFA <- R0
+
+DoStupidStoreCFA0, .-.
+	CLA
+	TAD StupidR0
+	DCA StupidCFA
+	JMP I DoStupidStoreCFA0
+
+/---	StupidStoreIP0		IP <- R0
+
+DoStupidStoreIP0, .-.
+	CLA
+	TAD StupidR0
+	DCA StupidIP
+	JMP I DoStupidStoreIP0
+
+/---	StupidStoreMP0		MP <- R0
+
+DoStupidStoreMP0, .-.
+	CLA
+	TAD StupidR0
+	DCA StupidMP
+	JMP I DoStupidStoreMP0
+
+/---	StupidStoreMP1		MP <- R1
+
+DoStupidStoreMP1, .-.
+	CLA
+	TAD StupidR1
+	DCA StupidMP
+	JMP I DoStupidStoreMP1
+
+/---	StupidStorePC0		Jump to address in R0
+/
+/	Also, return address on stack must be cleaned up.
+
+DoStupidStorePC0, .-.
+	JMP I StupidR0
+
+/---	StupidStoreRP0		RP <- R0
+
+DoStupidStoreRP0, .-.
+	CLA
+	TAD StupidR0
+	DCA StupidRP
+	JMP I DoStupidStoreRP0
+
+/---	StupidSwap1	SwapReg <- R0, R0 <- R1, R1 <- SwapReg
+/
+/	Swaps the top two items on the stack.
+
+DoStupidSwap1, .-.
+	CLA
+	TAD StupidR0
+	DCA StupidSwapReg
+	TAD StupidR1
+	DCA StupidR0
+	TAD StupidSwapReg
+	DCA StupidR1
+	JMP I DoStupidSwap1
+
+/---	StupidSwap2	SwapReg <- R1, R1 <- R2, R2 <- SwapReg
+/
+/	Swaps the top two items on the stack.
+
+DoStupidSwap2, .-.
+	CLA
+	TAD StupidR1
+	DCA StupidSwapReg
+	TAD StupidR2
+	DCA StupidR1
+	TAD StupidSwapReg
+	DCA StupidR2
+	JMP I DoStupidSwap2
+
+/---	StupidSwap3	SwapReg <- R2, R2 <- R3, R3 <- SwapReg
+/
+/	Swaps the top two items on the stack.
+
+DoStupidSwap3, .-.
+	CLA
+	TAD StupidR2
+	DCA StupidSwapReg
+	TAD StupidR3
+	DCA StupidR2
+	TAD StupidSwapReg
+	DCA StupidR3
+	JMP I DoStupidSwap3
+
+/---	MSQE		M: ( -> Flag )
+/			R: ( -> )
+/
+/	Machine-specific code for ?EMIT. Tests to see if the console
+/	is ready to accept a character, pushing the result on the
+/	math stack. If the console can accept a character, a non-zero
+/	flag is pushed. Otherwise, a zero flag is pushed.
+
+MSQE,	ISZ StupidMP	/ Make space for the flag
+
+	CLA IAC		/ Assume we'll skip (it can print)
+	TSF
+	CLA		/ It's not ready
+
+	DCA I StupidMP	/ Store the flag
+
+	JMP I Next	/ Next word
+
+/---	MSE		M: ( Character -> )
+/			R: ( -> )
+/
+/	Machine specific code for (EMIT). Puts a character on the
+/	console then drops it from the math stack.
+
+MSE,	CLA		/ Get the character
+	TAD I StupidMP
+
+	TPC		/ Print the character
+
+	CLA		/ Drop one from the math stack
+	TAD StupidMP
+	CMA IAC;CMA
+	DCA StupidMP
+
+	JMP I Next	/ Next
+
+/---	MSQK		M: ( -> Flag )
+/			R: ( -> )
+/
+/	Machine specific code for ?KEY. Tests the console to see if a
+/	character is available. If so, a non-zero flag is pushed. 
+/	Otherwise a zero flag is pushed.
+
+MSQK,	ISZ StupidMP	/ Make space for the flag
+
+	CLA IAC		/ Assume we'll skip (it's ready)
+	KSF
+	CLA		/ Didn't skip; it's not.
+
+	DCA I StupidMP	/ Store the flag
+
+	JMP I Next	/ Next
+
+/---	MSK		M: ( -> Character )
+/			R:
+/
+/	Machine specific code for (KEY). Reads a character from the
+/	console, pushing it on the math stack.
+
+MSK,	ISZ StupidMP	/ Make space for the character
+	KRB		/ Get the character
+	DCA I StupidMP	/ Store the character
+	JMP I Next	/ Next
+
+/---	MSBYE
+/
+/
+/	Machine-specific code for BYE. Since we don't have an OS, we
+/	just halt and then restart if anyone's foolish enough to restart.
+
+MSBYE,	HLT
+	JMP I MSBYE1
+MSBYE1,	Reset
+
+	EJECT
+
+/	Space for the THIRD stacks. We're going to grow the
+/	math stack up and the return stack down so that they
+/	can dynamically share a block of space.
+
+MathStackBottom,
+	0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0
+	0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0
+	0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0
+	0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0
+	0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0
+	0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0
+	0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0
+	0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0
+ReturnStackBottom,
+StupidRamBase,
+	PAGE
+	EJECT
+
+/ ----------------------------------------------------------------------
+/ 
+/ 		BASIC WORDS
+/ 
+/ These words are the basic FORTH system. Different projects extend
+/ this by hanging words off the base system.
+/ 
+/ These words must begin the dictionary so the base words don't have
+/ to know anything about the project-specific words.
+/ 
+/ The last word of the base system will always be ABORT. The first
+/ word of the project-specific system should specify ABORT as its
+/ previous word.
+/ 
+/ The project-specific words must include ?KEY, KEY, and EMIT.
+/ 
+/ Revisions:	04/21/97 RLI - Changed the flags byte to be a flags longword.
+/ 		04/22/01 RLI - Added SYSCALL and DROP opcodes.
+/ 		05/03/01 RLI - Glib reg- VM ops encourage backwards
+/ 		               subtracts. Now I have to look at them all.
+/ 		               Oops. Fixing it breaks control over growing
+/ 		               the math stack direction! reg- and reg+ will
+/ 		               now do reverse subtracts when appropriate.
+/ 		               I can either add a SWAP operation or special
+/ 		               case reg-. I think I'll add SWAP; making a
+/ 		               reverse minus would be more efficient (since
+/ 		               it's only used by reg-), but we're not
+/ 		               interested in efficiency.
+/ 		05/10/01 RLI - ($) incorrectly skipped count byte.
+/ 
+/ 		               BTW, I've realized that .NYBBLES assumes
+/ 		               word size is an even multiple of four
+/ 		               bits. There'll be no 18-bit THIRD until
+/ 		               I figure out what to do about that.
+/ 
+/ 		               Fixed a bunch of bogus blank line comments.
+/ 		               This hadn't been a problem on DOS with ^M^J
+/ 		               line terminators, but popped up when things
+/ 		               were moved to Unix.
+/ 
+/ ----------------------------------------------------------------------
+/ ----
+/ 
+/ Primitives
+/ 
+/ These words make up the absolute core of the FORTH system. For most
+/ of them, I just can't think of any way to turn them into high-level
+/ FORTH words.
+/ 
+/ ----
+
+
+/ ----	(NEXT) -- word # 0
+
+W0Name,
+
+	/ stringengize( (NEXT) )
+50
+116
+105
+130
+124
+51
+
+	.+100-W0Name
+	0		/ First word
+W0CFA,
+	W0CFA-.		/ (NEXT)
+W0PFA,
+/ (NEXT)				M: ( -> )
+/ 				R: ( -> )
+/ 
+/ This is the "inner interpreter". It knows how to fetch and execute
+/ the next FORTH word. You should probably not refer to this word in
+/ your FORTH code as it is highly unlikely that it will prove useful
+/ (most FORTH systems don't provide a header for this word).
+/ 
+/ Revisions:
+/ 
+/ 07/29/99 RLI - code version
+/ 
+/ There are actually several generally useful chunks of code included
+/ here, because they are either useful here or there is no really
+/ good place to put them (but they have to go _somewhere!).
+/ 
+/ ################################################### 
+/ 
+/ There isn't any really good place to describe what's going on, so
+/ this will have to do.
+/ 
+/ The .mini4 files contain descriptions of the machine code needed
+/ to implement the SCIFORTH primitives in a hypothetical assembly
+/ language for a four-level stack machine modelled on a
+/ traditional HP calculator. These descriptions will be compiled
+/ into machine code for the specific processor by the appropriate
+/ version of the QDL collator. The descriptions are intended to be
+/ compilable in either a simple minded manner or, should someone
+/ get really enthused in writing a QDL collator, in an optimized
+/ manner.
+/ 
+/ The intent is to describe SCIFORTH in a sequence of statements
+/ with limited stack depth. In addition to the small mini4 stack,
+/ SCIFORTH needs a number of registers; it is assumed to be
+/ inexpensive enough to access these registers that the mini4 code
+/ does not need to expend a lot of effort trying to keep things on
+/ the stack; i.e., if MP is used twice, the mini4 code assumes
+/ that a sequence like MP@ <stuff> MP@ is preferred to a sequence
+/ like MP@ DUP <stuff>.
+/ 
+/ The mini4 machine is a single-stack machine; it has only a 
+/ math stack. The return stack is constructed by mini4 operations
+/ on registers and memory.
+/ 
+/ The smallest addressable unit in SCIFORTH is the 'byte'.
+/ SCIFORTH deals primarily in 'cells', which may be one or more
+/ 'byte's long. There may be an additional intermediate unit on
+/ which the machine may operate called the 'word'. A 'byte' or
+/ 'word' may be fetched or stored to memory, but all operations in
+/ the SCIFORTH math stack operate strictly on 'cell's. 'Byte's and
+/ 'word's are converted to 'cell's as they are fetched and stored.
+/ Upon storing a 'byte' or 'word', the conversion is done by
+/ issuing the appropriate type of transaction. When fetching a
+/ 'byte' or 'word', the value fetched may be either sign-extended
+/ or zero-extended to form a 'cell' for use on the math stack.
+/ 
+/ An SCIFORTH implementation is not required to distinguish
+/ between 'byte's, 'word's, and 'cell's. It is possible to have an
+/ implementation with only 'cell's or an implementation with only
+/ 'byte's and 'cell's.
+/ 
+/ ---------------------- MINI4 OPCODES ----------------------
+/ 
+/ @	( Address -> Value ) Fetch a cell from memory. 
+/ 
+/ !	( Value, Address -> ) Write a cell to memory.
+/ 
+/ @.zb	( Address -> Value ) Fetch a byte from memory and
+/ 	zero-extend it to a cell. On machines with one-byte
+/ 	cells, this is equivalent to @.
+/ 
+/ !.b	( Value, Address -> ) Write a byte to memory. On
+/ 	machines with one-byte cells, this is equivalent to !.
+/ 
+/ @.sw	( Address -> Value ) Fetch a word from memory and
+/ 	sign-extend it to a cell. On machines with one-word
+/ 	cells, this is equivalent to @.
+/ 
+/ @.zw	( Address -> Value ) Fetch a word from memory and
+/ 	sign-extend it to a cell. On machines with one-word
+/ 	cells, this is equivalent to @.
+/ 
+/ !.w	( Value, Address -> ) Write a word to memory. On
+/ 	machines with one-word cells, this is equivalent to !.
+/ 
+/ REG@	( -> Value ) Copy the named register to the top of the 
+/ 	stack. The register names are described below.
+/ 
+/ REG!	( Value -> ) Copy the top of the stack to the
+/ 	named register. The register names are described below.
+/ 
+/ +	( a, b -> a+b ) Add the top two cells on the stack,
+/ 	leaving the result on the stack.
+/ 
+/ -	( a, b -> a-b ) Subtract the top two cells on the 
+/ 	stack, leaving the result on the stack.
+/ 
+/ AND	( a, b -> a AND b ) Perform a bitwise AND between the
+/ 	top two elements on the stack, leaving the result on the
+/ 	stack.
+/ 
+/ OR	( a, b -> a OR b ) Perform a bitwise OR between the top
+/ 	two elements on the stack, leaving the result on the
+/ 	stack.
+/ 
+/ XOR	( a, b -> a XOR b ) Perform a bitwise XOR between the
+/ 	top two elements on the stack, leaving the result on the
+/ 	stack.
+/ 
+/ GO label ( -> ) Jump to the named label.
+/ 
+/ ELSEGO label ( flag -> ) Jump to the named label if the top of the
+/ 	stack is zero.
+/ 
+/ <GO label ( a, b -> ) Jump to named label if a < b.
+/ 
+/ NEG	( a -> -a ) Form the two's complement of the cell on top
+/ 	of the stack.
+/ 
+/ NOT	( a -> ~a ) Form the one's complement of the cell on top
+/ 	of the stack.
+/ 
+/ <<	( a, b -> a<<b ) Shift left.
+/ 
+/ >>	( a, b -> a>>b ) Shift right (logical).
+/ 
+/ DUP	( a -> a, a ) Push a copy of the top of stack onto the
+/ 	stack.
+/ 
+/ 	DROP	( a -> ) Drop something from the stack.
+/ 
+/ 	SYSCALL	( -> ) Escape hatch for assembly language. The math
+/ 		stack depth is assumed not to change (this required the
+/ 		addition of DROP).
+/ 
+/ ---------------------- MINI4 PSEUDOOPS -------------------------
+/ 
+/ ;	This pseudo-instruction informs QDL that the stack
+/ 	should be empty. The QDL collator should issue an error
+/ 	message if the stack is not empty. It is intended
+/ 	primarily as a debugging aid.
+/ 
+/ LABEL label ( -> ) Declare a label. Note that these labels are
+/ 	global, as opposed to the intentionally local scope of
+/ 	QDL %LABELs.
+/ 
+/ #	( -> ) The rest of the line is copied to the output as a
+/ 	comment.
+/ 
+/ (	( -> ) The rest of the line is skipped.
+/ 
+/ MP+	This word adds the FORTH math stack pointer to the cell
+/ 	on the stack. In a system that grows the math stack
+/ 	downward, this is equivalent to "MP@ +". In a system
+/ 	that grows the math stack upward, this is equivalent to
+/ 	"MP@ SWAP -". This opcode allows systems which grow the FORTH
+/ 	math stack either way to be built from the same source
+/ 	code; In both systems, a word is dropped from the math
+/ 	stack by "CELLSIZE MP+ MP!".
+/ 
+/ MP-	This word subtracts the cell on the stack from the FORTH
+/ 		math stack pointer. In a system that grows the math
+/ 	stack downward, this is equivalent to "MP@ SWAP -". In a
+/ 	system that grows the math stack upward, this is
+/ 	equivalent to "MP@ +". This opcode allows systems which
+/ 	grow the FORTH math stack either way to be built from
+/ 	the same source code; in both systems, space is made for
+/ 	an item on the math stack by "CELLSIZE MP- MP!".
+/ 
+/ RP+	This word adds the FORTH return stack pointer to the
+/ 	cell on the stack. In a system that grows the return
+/ 	stack downward, this is equivalent to "RP@ +". In a
+/ 	system that grows the math stack upward, this is
+/ 	equivalent to "RP@ SWAP -". This opcode allows systems which
+/ 	grow the FORTH return stack either way to be built from
+/ 	the same source code; in both systems, a word is dropped
+/ 	from the return stack by "CELLSIZE RP+ RP!".
+/ 
+/ RP-	This word subtracts the cell on top of the stack from the
+/ 		FORTH return stack pointer. In a system the grows the return
+/ 	stack downward, this is equivalent to "RP@ SWAP -". In a
+/ 	system that grows the math stack upward, this is
+/ 	equivalent to "RP@ +". This opcode allows systems which
+/ 	grow the FORTH return stack either way to be built from
+/ 	the same source code; in both systems, space is made for
+/ 	an item on the return stack by "CELLSIZE RP- RP!".
+/ 
+/ NEXT	Executes the next FORTH word. This is equivalent to
+/ 	branching to Next:, below, but is given an opcode to
+/ 	deal with the variety of possible ways in which such a
+/ 	branch might be accomplished (for example, branching to
+/ 	the address in the NEXT register would allow a variety
+/ 	of Next routines to be used; perhaps one that yields in
+/ 	a cooperative multitasking environment could be
+/ 	provided).
+/ 
+/ BYTE value ( -> ) Emits a constant byte into the generated code
+/ 	stream. This is primarily for the creation of DIGITMAP,
+/ 	which is a pre-initialized array of bytes.
+/ 
+/ CELLSIZE ( -> Number of bytes in a cell ) Push the size of a
+/ 	cell in bytes onto the stack.
+/ 
+/ DEFINITION ( -> Offset to definition in bytes ) Push the offset
+/ 	from a CFA to the word's definition onto the stack.
+/ 
+/ 	SWAP	( a b -> b a ) Swaps the top two items on the math stack.
+/ 
+/ END	( -> ) Indicates the end of the CODE source. The CODE
+/ 	compiler returns to QDL.
+/ 
+/ Anything else is assumed to be a literal. Yes, this means it's
+/ not possible for there to be a syntax error. Yes, this does mean
+/ finding typos etc. will be painful.
+/ 
+/ ----------------------- REGISTERS ------------------------
+/ 
+/ Several registers are needed for this effort. In the pseudocode
+/ descriptions in these files, those registers are:
+/ 
+/ NEXT 	Contains the address of the code starting at Next:, below.
+/ 	This is typically used as a convenience for hand-assembled
+/ 	CODE words, as it allows such a word to exit by jumping to
+/ 	the contents of a register rather than requiring that an
+/ 	offset to Next: be calculated. CODE words that are part of
+/ 	the SCIFORTH source code will typically branch to Next:
+/ 	instead of jumping to the contents of the NEXT register.
+/ 
+/ 	The contents of this register are initialized by the startup
+/ 	code. It may be re-initialized if the code moves (for
+/ 	example, if SCIFORTH is moved from ROM to RAM in preparation
+/ 	for re-programming the FLASH ROM containing SCIFORTH).
+/ 
+/ PC	Contains the machine code instruction pointer. This is
+/ 	used to describe branches; loading a value into the PC
+/ 	is equivalent to branching to that address.
+/ 
+/ 	The PC cannot be fetched; that is, PC@ is not valid.
+/ 
+/ IP	Contains the FORTH instruction pointer. The cell pointed to
+/ 	by IP contains a pointer to the CFA of the next FORTH word
+/ 	to be executed.
+/ 
+/ 	The startup code typically begins executing SCIFORTH by
+/ 	loading the address of (COLD) into IP and jumping to Next:.
+/ 
+/ RP	Contains the return stack pointer. This is the address of
+/ 	the last item written to the return stack in memory. The
+/ 	return stack actually contains two more items in the
+/ 	R2 and R1 registers, described below.
+/ 
+/ 	RP is decremented before an item is moved from the return
+/ 	stack cache to memory. It is incremented after an item is
+/ 	moved from memory to the return stack cache.
+/ 
+/ MP	Contains the math stack pointer. This is the address of
+/ 	the last item written to the math stack in memory. The
+/ 	math stack actually contains two more items in the M2 and
+/ 	M1 registers, described below.
+/ 
+/ 	MP is decremented before an item is moved from the math
+/ 	stack cache to memory. It is incremented after an item is
+/ 	moved from memory to the math stack cache.
+/ 
+/ CFA	Contains the address of the CFA of the FORTH word currently
+/ 	being executed. This is calculated by Next: as part of
+/ 	finding the next word to execute and is used by such words
+/ 	as (VAR) and (CONSTANT), which need to be able to find the
+/ 	definition of the current word being executed.
+/ 
+/ InitialMP Contains the initial value for the math stack pointer;
+/ 	that is, the address of the cell immediately above the
+/ 	memory region in which the math stack is to reside. It is
+/ 	initialized by the startup code before FORTH code begins
+/ 	to be executed.
+/ 
+/ InitialRP Contains the initial value for the return stack pointer;
+/ 	that is, the address of the cell immediately above the
+/ 	memory region in which the return stack is to reside. It is
+/ 	initialized by the startup code before FORTH code begins
+/ 	to be executed.
+/ 
+/ There are two additional registers which are not needed by the core
+/ SCIFORTH dictionary, but are useful for implementations that need to
+/ be moved around in memory (such as copying themselves from ROM to
+/ RAM). They are:
+/ 
+/ InitialDP Contains the initial value for the dictionary pointer;
+/ 	that is, the address of the cell immediately following the
+/ 	current dictionary. This is initialized by the startup code
+/ 	before FORTH code begins to be executed.
+/ 
+/ InitialLAST Contains the initial value for the pointer to the CFA of
+/ 	the last word in the dictionary. This is initialized by the
+/ 	startup code before FORTH code begins to be executed.
+/ 
+/ ################################# 
+/ 
+/ This file contains several snippets of code:
+/ 
+/ Next	Code to fetch the pointer to the next word to be executed
+/ Next_A	Code to execute the word after the pointer has been fetched
+/ 
+/ ################################ 
+/ 
+/ Next
+/ 
+/ This code fetches the pointer to the next word to be executed. It
+/ falls through to Next_A, which jumps to the machine code which knows
+/ how to execute the word.
+/ 
+SL1,			/ LABEL Next
+/ Fetch the offset to the CFA of the word to be executed next and
+/ relocate it to form the address of the CFA.
+	JMS I StupidFetchIP0		/ IP@
+	JMS I StupidFetch0		/ @
+	JMS I StupidFetchIP1		/ IP@
+	JMS I StupidPlus1			/ +
+	JMS I StupidStoreCFA0		/ CFA!
+/ Advance the IP past the cell just fetched.
+	JMS I StupidFetchIP0		/ IP@
+	JMS I StupidLiteral1		/ 1
+	1
+	JMS I StupidPlus1			/ +
+	JMS I StupidStoreIP0		/ IP!
+/ Next_A
+/ 
+/ This code takes the pointer to the next word to be executed in CFA
+/ and uses it to locate and enter the machine code which knows how to
+/ execute the word. This code is used by both (NEXT) and EXEC.
+SL2,			/ LABEL Next_A
+/ Fetch and relocate the pointer to the CFA of the word that knows
+/ how to execute this word.
+	JMS I StupidFetchCFA0		/ CFA@
+	JMS I StupidFetch0		/ @
+	JMS I StupidFetchCFA1		/ CFA@
+	JMS I StupidPlus1			/ +
+/ Form a pointer to the code contained in that word's definition.
+	JMS I StupidLiteral1		/ 1
+	1
+	JMS I StupidPlus1			/ +
+/ Jump to the code that knows how to execute this word.
+	JMS I StupidStorePC0		/ PC!
+
+
+/ ----	EXEC -- word # 3
+
+W3Name,
+
+	/ stringengize( EXEC )
+105
+130
+105
+103
+
+	.+0-W3Name
+	W3CFA-W0CFA
+W3CFA,
+	W3CFA-.		/ EXEC
+W3PFA,
+/ EXEC - Execute a word whose address is on top of the math stack.
+/ 
+/ M: ( cfa -> [depends on word executed] )
+/ R: ( -> )
+/ 
+/ This word needs intimate knowledge of (NEXT) in order to work
+/ correctly. It works by stuffing the address of the word to be
+/ executed where (NEXT) puts it after relocating it and branching
+/ to the place in (NEXT) where the transfer is made. In terms of our
+/ hyphothetical skeleton machine, that means copying the top of the
+/ math stack to CFA and jumping to Next_A:
+/ 
+/ Revisions:
+/ 07/29/99 RLI - code version
+/ Copy the top of the math stack to CFA.
+	JMS I StupidFetchMP0		/ MP@
+	JMS I StupidFetch0		/ @
+	JMS I StupidStoreCFA0		/ CFA!
+/ Pop the CFA address from the math stack.
+	JMS I StupidLiteral0		/ 1
+	1
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidSwap1		/ SWAP
+	JMS I StupidMinus1		/ -
+	JMS I StupidStoreMP0		/ MP!
+/ Branch to Next_A
+	JMP SL2		/ GO Next_A
+
+
+/ ----	(:) -- word # 4
+
+W4Name,
+
+	/ stringengize( (:) )
+50
+72
+51
+
+	.+0-W4Name
+	W4CFA-W3CFA
+W4CFA,
+	W4CFA-.		/ (:)
+W4PFA,
+/ (:) - Enter a FORTH word	M: ( -> )
+/ 				R: ( -> IP )
+/ 
+/ This word contains machine code which knows how to execute a FORTH
+/ word. Executing a FORTH word consists of saving the current IP on
+/ the stack (that's the address to which we'll return after this FORTH
+/ word is executing) and replacing IP by the address of the current
+/ word's definition. The address of the current word's header is
+/ conveniently left for us in CFA by NEXT.
+/ 
+/ Revisions:
+/ 07/29/99 RLI - code version
+/ Make space for IP on the return stack
+	JMS I StupidLiteral0		/ 1
+	1
+	JMS I StupidFetchRP1		/ RP@
+	JMS I StupidSwap1		/ SWAP
+	JMS I StupidMinus1		/ -
+	JMS I StupidStoreRP0		/ RP!
+/ Store IP on the return stack.
+	JMS I StupidFetchIP0		/ IP@
+	JMS I StupidFetchRP1		/ RP@
+	JMS I StupidStore1		/ !
+/ Put the address of the current word's definition in IP.
+	JMS I StupidFetchCFA0		/ CFA@
+	JMS I StupidLiteral1		/ 1
+	1
+	JMS I StupidPlus1			/ +
+	JMS I StupidStoreIP0		/ IP!
+	JMS I StupidFetchNEXT0		/ NEXT@
+	JMS I StupidStorePC0		/ PC!
+
+
+/ ----	(;) -- word # 5
+
+W5Name,
+
+	/ stringengize( (;) )
+50
+73
+51
+
+	.+0-W5Name
+	W5CFA-W4CFA
+W5CFA,
+	W5CFA-.		/ (;)
+W5PFA,
+/ (;) - Terminate execution of a FORTH word
+/ 
+/ M: ( -> )
+/ R: ( Return address -> )
+/ 
+/ This word executes the end of a FORTH word. It pops the IP from the
+/ return stack and begins execution there.
+/ 
+/ Revisions:
+/ 07/29/99 RLI - code version.
+/ Copy the top of the return stack into IP.
+	JMS I StupidFetchRP0		/ RP@
+	JMS I StupidFetch0		/ @
+	JMS I StupidStoreIP0		/ IP!
+/ Drop the return address from the return stack.
+	JMS I StupidLiteral0		/ 1
+	1
+	JMS I StupidFetchRP1		/ RP@
+	JMS I StupidPlus1			/ +
+	JMS I StupidStoreRP0		/ RP!
+	JMS I StupidFetchNEXT0		/ NEXT@
+	JMS I StupidStorePC0		/ PC!
+
+
+/ ----	(CONSTANT) -- word # 6
+
+W6Name,
+
+	/ stringengize( (CONSTANT) )
+50
+103
+117
+116
+123
+124
+101
+116
+124
+51
+
+	.+0-W6Name
+	W6CFA-W5CFA
+W6CFA,
+	W6CFA-.		/ (CONSTANT)
+W6PFA,
+/ (CONSTANT) - Execute a constant
+/ 
+/ M: ( -> Whatever's in the first cell of the word's definition )
+/ R: ( -> )
+/ 
+/ This word contains the machine code which knows how to execute a
+/ CONSTANT. Executing a CONSTANT consists of taking the first cell
+/ of the CONSTANT's definition and pushing it on the math stack.
+/ 
+/ NEXT conveniently leaves the address of the CONSTANT's header in CFA.
+/ 
+/ Revisions:
+/ 07/29/99 RLI - code version.
+/ Make space on the math stack
+	JMS I StupidLiteral0		/ 1
+	1
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidPlus1			/ +
+	JMS I StupidStoreMP0		/ MP!
+/ Calculate the address of the first cell of the definition.
+	JMS I StupidFetchCFA0		/ CFA@
+	JMS I StupidLiteral1		/ 1
+	1
+	JMS I StupidPlus1			/ +
+/ Copy the first cell of the definition into the top of the math
+/ stack.
+	JMS I StupidFetch0		/ @
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidStore1		/ !
+	JMS I StupidFetchNEXT0		/ NEXT@
+	JMS I StupidStorePC0		/ PC!
+
+
+/ ----	(VAR) -- word # 7
+
+W7Name,
+
+	/ stringengize( (VAR) )
+50
+126
+101
+122
+51
+
+	.+0-W7Name
+	W7CFA-W6CFA
+W7CFA,
+	W7CFA-.		/ (VAR)
+W7PFA,
+/ (VAR) - Code which knows how to execute a VAR
+/ 
+/ M: ( -> The address of the word's definition )
+/ R: ( -> )
+/ 
+/ This word contains the machine code which knows how to execute a
+/ VARiable. Execution of a VARiable consists of pushing the address of
+/ the VARiable's definition onto the math stack.
+/ 
+/ NEXT conveniently leaves the address of the VARiable's header in
+/ CFA.
+/ 
+/ Revisions:
+/ 07/29/99 RLI - code version.
+/ Make space on the math stack for one cell.
+	JMS I StupidLiteral0		/ 1
+	1
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidPlus1			/ +
+	JMS I StupidStoreMP0		/ MP!
+/ Calculate the address of the current word's definition, leaving
+/ the result in the top of the math stack.
+	JMS I StupidFetchCFA0		/ CFA@
+	JMS I StupidLiteral1		/ 1
+	1
+	JMS I StupidPlus1			/ +
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidStore1		/ !
+	JMS I StupidFetchNEXT0		/ NEXT@
+	JMS I StupidStorePC0		/ PC!
+
+
+/ ----	(BRANCH) -- word # 8
+
+W8Name,
+
+	/ stringengize( (BRANCH) )
+50
+102
+122
+101
+116
+103
+110
+51
+
+	.+0-W8Name
+	W8CFA-W7CFA
+W8CFA,
+	W8CFA-.		/ (BRANCH)
+W8PFA,
+/ (BRANCH) - Branch to a word
+/ 
+/ M: ( -> )
+/ R: ( -> )
+/ 
+/ This word contains the machine code to execute a branch. A branch is
+/ executed by adding the offset in the code following the reference 
+/ to this word to the IP. This word is generally not referred to
+/ directly by users typing in code; the references are built
+/ implicitly by words like IF, UNTIL, LOOP, etc.
+/ 
+/ This code is also used as a utility routine by a variety of other
+/ low-level words. They enter at the label pBranch:
+/ 
+/ Revisions:
+/ 07/29/99 RLI - code version
+SL9,			/ LABEL pBranch
+/ Fetch the branch offset
+	JMS I StupidFetchIP0		/ IP@
+	JMS I StupidFetch0		/ @
+/ Relocate the offset to form the address to which it refers
+	JMS I StupidFetchIP1		/ IP@
+	JMS I StupidPlus1			/ +
+/ Start executing there
+	JMS I StupidStoreIP0		/ IP!
+	JMS I StupidFetchNEXT0		/ NEXT@
+	JMS I StupidStorePC0		/ PC!
+
+
+/ ----	(0BRANCH) -- word # 10
+
+W10Name,
+
+	/ stringengize( (0BRANCH) )
+50
+60
+102
+122
+101
+116
+103
+110
+51
+
+	.+0-W10Name
+	W10CFA-W8CFA
+W10CFA,
+	W10CFA-.		/ (0BRANCH)
+W10PFA,
+/ (0BRANCH) - Branch if the top of stack is zero.
+/ 
+/ M: ( flag -> )
+/ R: ( -> )
+/ 
+/ This word knows how to conditionally branch based on the top of the
+/ stack. If the top of stack is zero, the cell  following the reference
+/ to (0BRANCH) is added to IP. Otherwise, IP is simply incremented past
+/ the offset.
+/ 
+/ This word is typically not referred to by users typing code.
+/ References to it are generated implicitly by words like IF.
+/ 
+/ The branch is performed by entering (BRANCH) at pBranch.
+/ 
+/ Revisions:
+/ 07/29/99 RLI - code version
+/ Grab the flag from the math stack and pop the math stack.
+	JMS I StupidFetchMP0		/ MP@
+	JMS I StupidFetch0		/ @
+	JMS I StupidLiteral1		/ 1
+	1
+	JMS I StupidFetchMP2		/ MP@
+	JMS I StupidSwap2		/ SWAP
+	JMS I StupidMinus2		/ -
+	JMS I StupidStoreMP1		/ MP!
+/ If the flag is zero, branch.
+	JMS I StupidElseGo0		/ ELSEGO pBranch
+	SL9
+/ Otherwise, skip the offset and continue.
+	JMS I StupidFetchIP0		/ IP@
+	JMS I StupidLiteral1		/ 1
+	1
+	JMS I StupidPlus1			/ +
+	JMS I StupidStoreIP0		/ IP!
+	JMS I StupidFetchNEXT0		/ NEXT@
+	JMS I StupidStorePC0		/ PC!
+
+
+/ ----	($) -- word # 11
+
+W11Name,
+
+	/ stringengize( ($) )
+50
+44
+51
+
+	.+0-W11Name
+	W11CFA-W10CFA
+W11CFA,
+	W11CFA-.		/ ($)
+W11PFA,
+/ ($) - Word which knows how to execute a string
+/ 
+/ M: ( -> Address of word's definition, length of string )
+/ R: ( -> )
+/ 
+/ This word executes a string variable. It puts the address of the
+/ first character of the string and the string's length on the
+/ math stack. (NEXT) conveniently leaves the address of the string's
+/ CFA in CFA.
+/ 
+/ Revisions:
+/ 07/29/99 RLI - code version.
+/ 	05/10/01 RLI - Forgot to go to the word's definition before
+/ 	               skipping the count byte.
+/ Make space on the math stack for two cells.
+	JMS I StupidLiteral0		/ 1
+	1
+	JMS I StupidDup1			/ DUP
+	JMS I StupidPlus1			/ +
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidPlus1			/ +
+	JMS I StupidStoreMP0		/ MP!
+/ Calculate the address of the word's definition and fetch the length
+/ byte from it into the top of the math stack.
+	JMS I StupidFetchCFA0		/ CFA@
+	JMS I StupidLiteral1		/ 1
+	1
+	JMS I StupidPlus1			/ +
+				/ @.zb
+	JMS I StupidFetch0		/ @
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidStore1		/ !
+/ Calculate the address of the start of the string data, leaving the
+/ result in the second of the math stack.
+	JMS I StupidFetchCFA0		/ CFA@
+	JMS I StupidLiteral1		/ 1
+	1
+	JMS I StupidPlus1			/ +
+	JMS I StupidLiteral1		/ 1
+	1
+	JMS I StupidPlus1			/ +
+	JMS I StupidLiteral1		/ 1
+	1
+	JMS I StupidFetchMP2		/ MP@
+	JMS I StupidSwap2		/ SWAP
+	JMS I StupidMinus2		/ -
+	JMS I StupidStore1		/ !
+	JMS I StupidFetchNEXT0		/ NEXT@
+	JMS I StupidStorePC0		/ PC!
+/ ----
+/ 
+/ Fetches and stores
+/ 
+/ ----
+
+
+/ ----	@ -- word # 12
+
+W12Name,
+
+	/ stringengize( @ )
+100
+
+	.+0-W12Name
+	W12CFA-W11CFA
+W12CFA,
+	W12CFA-.		/ @
+W12PFA,
+/ @ - Longword fetch
+/ 
+/ M: ( a -> b )
+/ R: ( -> )
+/ 
+/ a is used as an address to fetch b.
+/ 
+/ Revisions:
+/ 07/29/99 RLI - code version
+/ Fetch a from the math stack
+	JMS I StupidFetchMP0		/ MP@
+	JMS I StupidFetch0		/ @
+/ Fetch the cell pointed to by a
+	JMS I StupidFetch0		/ @
+/ Replace a with b in the math stack
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidStore1		/ !
+	JMS I StupidFetchNEXT0		/ NEXT@
+	JMS I StupidStorePC0		/ PC!
+
+
+/ ----	B@ -- word # 13
+
+W13Name,
+
+	/ stringengize( B@ )
+102
+100
+
+	.+0-W13Name
+	W13CFA-W12CFA
+W13CFA,
+	W13CFA-.		/ B@
+W13PFA,
+/ B@ - Byte fetch
+/ 
+/ M: ( a -> b )
+/ R: ( -> )
+/ 
+/ a is used as an address to fetch b. b is an unsigned byte; it's
+/ zero-extended to a cell.
+/ 
+/ Revisions:
+/ 07/29/96 RLI - Modified for new register usage
+/ 07/29/99 RLI - code version.
+/ Fetch the address of the byte from the math stack.
+	JMS I StupidFetchMP0		/ MP@
+	JMS I StupidFetch0		/ @
+/ Fetch and zero-extend the byte
+				/ @.zb
+	JMS I StupidFetch0		/ @
+/ Replace the address in the math stack with the byte
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidStore1		/ !
+	JMS I StupidFetchNEXT0		/ NEXT@
+	JMS I StupidStorePC0		/ PC!
+
+
+/ ----	W@ -- word # 14
+
+W14Name,
+
+	/ stringengize( W@ )
+127
+100
+
+	.+0-W14Name
+	W14CFA-W13CFA
+W14CFA,
+	W14CFA-.		/ W@
+W14PFA,
+/ W@ - word fetch
+/ 
+/ M: ( a -> b )
+/ R: ( -> )
+/ 
+/ a is used as an address to fetch b. b is an unsigned word; it's
+/ zero-extended to a cell.
+/ 
+/ Revisions:
+/ 07/30/99 RLI - code version
+/ Fetch the address from the math stack
+	JMS I StupidFetchMP0		/ MP@
+	JMS I StupidFetch0		/ @
+/ Fetch and zeroextend the word
+					/ @.zw -> @
+	JMS I StupidFetch0		/ @
+/ Replace the address with the word on the math stack
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidStore1		/ !
+	JMS I StupidFetchNEXT0		/ NEXT@
+	JMS I StupidStorePC0		/ PC!
+
+
+/ ----	CVTW@ -- word # 15
+
+W15Name,
+
+	/ stringengize( CVTW@ )
+103
+126
+124
+127
+100
+
+	.+0-W15Name
+	W15CFA-W14CFA
+W15CFA,
+	W15CFA-.		/ CVTW@
+W15PFA,
+/ CVTW@ - Convert word fetch
+/ 
+/ M: ( a -> b )
+/ R: ( -> )
+/ 
+/ a is used as an address to fetch b. b is a signed word; it's
+/ sign-extended to a cell.
+/ 
+/ Revisions:
+/ 
+/ 07/29/99 RLI - code version
+/ Fetch the address from which the word is to be fetched.
+	JMS I StupidFetchMP0		/ MP@
+	JMS I StupidFetch0		/ @
+/ Fetch the word and sign extend it
+					/ @.sw -> @
+	JMS I StupidFetch0		/ @
+/ Replace a with b
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidStore1		/ !
+	JMS I StupidFetchNEXT0		/ NEXT@
+	JMS I StupidStorePC0		/ PC!
+
+
+/ ----	! -- word # 16
+
+W16Name,
+
+	/ stringengize( ! )
+41
+
+	.+0-W16Name
+	W16CFA-W15CFA
+W16CFA,
+	W16CFA-.		/ !
+W16PFA,
+/ ! - Store
+/ 
+/ M: ( a b -> )
+/ R: ( -> )
+/ 
+/ The longword a is stored at address b.
+/ 
+/ Revisions:
+/ 07/29/99 RLI - code version
+/ Fetch a
+	JMS I StupidLiteral0		/ 1
+	1
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidSwap1		/ SWAP
+	JMS I StupidMinus1		/ -
+	JMS I StupidFetch0		/ @
+/ Fetch b
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidFetch1		/ @
+/ Store the longword
+	JMS I StupidStore1		/ !
+/ Drop a and b from the stack
+	JMS I StupidLiteral0		/ 1
+	1
+	JMS I StupidDup1			/ DUP
+	JMS I StupidPlus1			/ +
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidSwap1		/ SWAP
+	JMS I StupidMinus1		/ -
+	JMS I StupidStoreMP0		/ MP!
+	JMS I StupidFetchNEXT0		/ NEXT@
+	JMS I StupidStorePC0		/ PC!
+
+
+/ ----	B! -- word # 17
+
+W17Name,
+
+	/ stringengize( B! )
+102
+41
+
+	.+0-W17Name
+	W17CFA-W16CFA
+W17CFA,
+	W17CFA-.		/ B!
+W17PFA,
+/ B! - Byte store
+/ 
+/ M: ( a b -> )
+/ R: ( -> )
+/ 
+/ The byte a is stored at address b.
+/ 
+/ Revisions:
+/ 07/29/99 RLI - code version
+/ Fetch the byte and the address at which it should be stored.
+	JMS I StupidLiteral0		/ 1
+	1
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidSwap1		/ SWAP
+	JMS I StupidMinus1		/ -
+	JMS I StupidFetch0		/ @
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidFetch1		/ @
+/ Store the byte a at address b
+				/ !.b
+	JMS I StupidStore1		/ !
+/ Drop a and b from the math stack
+	JMS I StupidLiteral0		/ 1
+	1
+	JMS I StupidDup1			/ DUP
+	JMS I StupidPlus1			/ +
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidSwap1		/ SWAP
+	JMS I StupidMinus1		/ -
+	JMS I StupidStoreMP0		/ MP!
+	JMS I StupidFetchNEXT0		/ NEXT@
+	JMS I StupidStorePC0		/ PC!
+
+
+/ ----	W! -- word # 18
+
+W18Name,
+
+	/ stringengize( W! )
+127
+41
+
+	.+0-W18Name
+	W18CFA-W17CFA
+W18CFA,
+	W18CFA-.		/ W!
+W18PFA,
+/ W! - Word store
+/ 
+/ M: ( a, b -> )
+/ R: ( -> )
+/ 
+/ The word a is stored at address b.
+/ 
+/ Revisions:
+/ 07/29/99 RLI - code version
+/ Fetch a
+	JMS I StupidLiteral0		/ 1
+	1
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidSwap1		/ SWAP
+	JMS I StupidMinus1		/ -
+	JMS I StupidFetch0		/ @
+/ Fetch b
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidFetch1		/ @
+/ Store a at b
+					/ !.w -> !
+	JMS I StupidStore1		/ !
+/ Drop a and b from the math stack
+	JMS I StupidLiteral0		/ 1
+	1
+	JMS I StupidDup1			/ DUP
+	JMS I StupidPlus1			/ +
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidSwap1		/ SWAP
+	JMS I StupidMinus1		/ -
+	JMS I StupidStoreMP0		/ MP!
+	JMS I StupidFetchNEXT0		/ NEXT@
+	JMS I StupidStorePC0		/ PC!
+/ --	++ - Increments a variable
+/ 
+/ ( v -> )
+/ 
+/ The longword at v is fetched, incremented, and stored back.
+
+
+/ ----	++ -- word # 19
+
+W19Name,
+
+	/ stringengize( ++ )
+53
+53
+
+	.+0-W19Name
+	W19CFA-W18CFA
+W19CFA,
+	W4CFA-.		/ (:)
+W19PFA,
+	W20CFA-.		/ DUP
+	W12CFA-.		/ @
+	W21CFA-.		/ 1
+	W22CFA-.		/ +
+	W23CFA-.		/ SWAP
+	W16CFA-.		/ !
+	W5CFA-.		/ (;)
+/ ----
+/ 
+/ Stack manipulation
+/ 
+/ ----
+
+
+/ ----	DUP -- word # 20
+
+W20Name,
+
+	/ stringengize( DUP )
+104
+125
+120
+
+	.+0-W20Name
+	W20CFA-W19CFA
+W20CFA,
+	W20CFA-.		/ DUP
+W20PFA,
+/ DUP - Duplicate top of stack
+/ 
+/ M: ( a -> a, a )
+/ R: ( -> )
+/ 
+/ Push a copy of whatever is on the top of the math stack onto the
+/ math stack.
+/ 
+/ Revisions:
+/ 07/29/96 RLI - Modified for new register usage.
+/ 07/29/99 RLI - code version
+/ Fetch a
+	JMS I StupidFetchMP0		/ MP@
+	JMS I StupidFetch0		/ @
+/ Make space for the copy of a on the math stack
+	JMS I StupidLiteral1		/ 1
+	1
+	JMS I StupidFetchMP2		/ MP@
+	JMS I StupidPlus2			/ +
+	JMS I StupidStoreMP1		/ MP!
+/ Store the new copy of a
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidStore1		/ !
+	JMS I StupidFetchNEXT0		/ NEXT@
+	JMS I StupidStorePC0		/ PC!
+
+
+/ ----	SWAP -- word # 23
+
+W23Name,
+
+	/ stringengize( SWAP )
+123
+127
+101
+120
+
+	.+0-W23Name
+	W23CFA-W20CFA
+W23CFA,
+	W23CFA-.		/ SWAP
+W23PFA,
+/ SWAP - Swap the top two items on the stack
+/ 
+/ M: ( a, b -> b, a )
+/ R: ( -> )
+/ 
+/ Revisions:
+/ 07/29/99 RLI - code version
+/ Fetch a and b
+	JMS I StupidLiteral0		/ 1
+	1
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidSwap1		/ SWAP
+	JMS I StupidMinus1		/ -
+	JMS I StupidFetch0		/ @
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidFetch1		/ @
+/ Store b and a
+	JMS I StupidLiteral2		/ 1
+	1
+	JMS I StupidFetchMP3		/ MP@
+	JMS I StupidSwap3		/ SWAP
+	JMS I StupidMinus3		/ -
+	JMS I StupidStore2		/ !
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidStore1		/ !
+	JMS I StupidFetchNEXT0		/ NEXT@
+	JMS I StupidStorePC0		/ PC!
+
+
+/ ----	DROP -- word # 24
+
+W24Name,
+
+	/ stringengize( DROP )
+104
+122
+117
+120
+
+	.+0-W24Name
+	W24CFA-W23CFA
+W24CFA,
+	W24CFA-.		/ DROP
+W24PFA,
+/ DROP - Forget top of stack
+/ 
+/ M: ( a -> )
+/ R: ( -> )
+/ 
+/ This could be done as : DROP DUP - - ; but that's just as long as
+/ the machine code...
+/ 
+/ Revisions:
+/ 07/29/99 RLI - code version
+/ Drop a from the stack
+	JMS I StupidLiteral0		/ 1
+	1
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidSwap1		/ SWAP
+	JMS I StupidMinus1		/ -
+	JMS I StupidStoreMP0		/ MP!
+	JMS I StupidFetchNEXT0		/ NEXT@
+	JMS I StupidStorePC0		/ PC!
+
+
+/ ----	>R -- word # 25
+
+W25Name,
+
+	/ stringengize( >R )
+76
+122
+
+	.+0-W25Name
+	W25CFA-W24CFA
+W25CFA,
+	W25CFA-.		/ >R
+W25PFA,
+/ >R - Transfer an item from the math stack to the return stack
+/ 
+/ M:( a -> )
+/ R: ( -> a )
+/ 
+/ Revisions:
+/ 07/29/99 RLI - code version
+/ Make space for an item on the return stack
+	JMS I StupidLiteral0		/ 1
+	1
+	JMS I StupidFetchRP1		/ RP@
+	JMS I StupidSwap1		/ SWAP
+	JMS I StupidMinus1		/ -
+	JMS I StupidStoreRP0		/ RP!
+/ Copy a from the math stack to the return stack.
+	JMS I StupidFetchMP0		/ MP@
+	JMS I StupidFetch0		/ @
+	JMS I StupidFetchRP1		/ RP@
+	JMS I StupidStore1		/ !
+/ Drop a from the math stack.
+	JMS I StupidLiteral0		/ 1
+	1
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidSwap1		/ SWAP
+	JMS I StupidMinus1		/ -
+	JMS I StupidStoreMP0		/ MP!
+	JMS I StupidFetchNEXT0		/ NEXT@
+	JMS I StupidStorePC0		/ PC!
+
+
+/ ----	<R -- word # 26
+
+W26Name,
+
+	/ stringengize( <R )
+74
+122
+
+	.+0-W26Name
+	W26CFA-W25CFA
+W26CFA,
+	W26CFA-.		/ <R
+W26PFA,
+/ <R - Transfer an item from the return stack to the math stack
+/ 
+/ M: ( -> a )
+/ R: ( a -> )
+/ 
+/ Revisions:
+/ 07/30/99 RLI - code version
+/ Make space on the math stack for one cell.
+	JMS I StupidLiteral0		/ 1
+	1
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidPlus1			/ +
+	JMS I StupidStoreMP0		/ MP!
+/ Fetch the top of the return stack
+	JMS I StupidFetchRP0		/ RP@
+	JMS I StupidFetch0		/ @
+/ Store it on the math stack
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidStore1		/ !
+/ Drop a from the return stack.
+	JMS I StupidLiteral0		/ 1
+	1
+	JMS I StupidFetchRP1		/ RP@
+	JMS I StupidPlus1			/ +
+	JMS I StupidStoreRP0		/ RP!
+	JMS I StupidFetchNEXT0		/ NEXT@
+	JMS I StupidStorePC0		/ PC!
+
+
+/ ----	R -- word # 27
+
+W27Name,
+
+	/ stringengize( R )
+122
+
+	.+0-W27Name
+	W27CFA-W26CFA
+W27CFA,
+	W27CFA-.		/ R
+W27PFA,
+/ R - Transfer an item from the return stack to the math stack, but
+/     don't pop the math stack.
+/ 
+/ M: ( -> a )
+/ R: ( a -> a )
+/ 
+/ Revisions:
+/ 07/29/99 RLI - code version.
+/ Make space on the math stack for one cell.
+	JMS I StupidLiteral0		/ 1
+	1
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidPlus1			/ +
+	JMS I StupidStoreMP0		/ MP!
+/ Copy the top of the return stack over to the math stack.
+	JMS I StupidFetchRP0		/ RP@
+	JMS I StupidFetch0		/ @
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidStore1		/ !
+	JMS I StupidFetchNEXT0		/ NEXT@
+	JMS I StupidStorePC0		/ PC!
+
+
+/ ----	RP! -- word # 28
+
+W28Name,
+
+	/ stringengize( RP! )
+122
+120
+41
+
+	.+0-W28Name
+	W28CFA-W27CFA
+W28CFA,
+	W28CFA-.		/ RP!
+W28PFA,
+/ RP! - Initialize the return pointer
+/ 
+/ M: ( -> )
+/ R: Initialized
+/ 
+/ This is used during error recovery and system initialization. When
+/ aborting from an error, the return stack is cleaned and we go back
+/ to interpreting.
+/ 
+/ Revisions:
+/ 07/29/99 RLI - code version.
+	JMS I StupidFetchInitialRP0		/ InitialRP@
+	JMS I StupidStoreRP0		/ RP!
+	JMS I StupidFetchNEXT0		/ NEXT@
+	JMS I StupidStorePC0		/ PC!
+/ --	OVER - Duplicate second item on math stack
+/ 
+/ ( a b -> a b a )
+/ 
+/ This is smaller than the equivalent assembly on an i960
+
+
+/ ----	OVER -- word # 29
+
+W29Name,
+
+	/ stringengize( OVER )
+117
+126
+105
+122
+
+	.+0-W29Name
+	W29CFA-W28CFA
+W29CFA,
+	W4CFA-.		/ (:)
+W29PFA,
+	W25CFA-.		/ >R
+	W20CFA-.		/ DUP
+	W26CFA-.		/ <R
+	W23CFA-.		/ SWAP
+	W5CFA-.		/ (;)
+
+
+/ ----	MP! -- word # 30
+
+W30Name,
+
+	/ stringengize( MP! )
+115
+120
+41
+
+	.+0-W30Name
+	W30CFA-W29CFA
+W30CFA,
+	W30CFA-.		/ MP!
+W30PFA,
+/ MP! - Initialize the math stack pointer
+/ 
+/ M: Initialized
+/ R: ( -> )
+/ 
+/ This is used during error recovery and system initialization. When
+/ aborting from an error, the math  stack is cleaned and we go back
+/ to interpreting.
+/ 
+/ Revisions:
+/ 07/29/99 RLI - code version
+/ Initialize MP
+	JMS I StupidFetchInitialMP0		/ InitialMP@
+	JMS I StupidStoreMP0		/ MP!
+	JMS I StupidFetchNEXT0		/ NEXT@
+	JMS I StupidStorePC0		/ PC!
+
+
+/ ----	MP@ -- word # 31
+
+W31Name,
+
+	/ stringengize( MP@ )
+115
+120
+100
+
+	.+0-W31Name
+	W31CFA-W30CFA
+W31CFA,
+	W31CFA-.		/ MP@
+W31PFA,
+/ MP@ - Fetch the math stack pointer
+/ 
+/ M: ( -> MP )
+/ R: ( -> )
+/ 
+/ This is used by the compiler to verify that the stack has been cleaned
+/ off at the end of compilation. If the math stack at the start of
+/ compilation and the math stack at the end of compilation don't match,
+/ there is probably an unclosed control loop.
+/ 
+/ It should not be assumed that the value returned by MP@ can be used
+/ as an address from which the top item of the math stack can be
+/ fetched; different implementations will have different levels of
+/ stack caching and even differing points in MP@ where the pointer
+/ is updated to make room for a copy of itself.
+/ 
+/ Revisions:
+/ 07/29/99 RLI - code version
+/ Make space on the math stack for one cell.
+	JMS I StupidLiteral0		/ 1
+	1
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidPlus1			/ +
+	JMS I StupidStoreMP0		/ MP!
+/ Store a copy of the MP on the math stack.
+	JMS I StupidFetchMP0		/ MP@
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidStore1		/ !
+	JMS I StupidFetchNEXT0		/ NEXT@
+	JMS I StupidStorePC0		/ PC!
+/ ----
+/ 
+/ Arithmetic and Logic
+/ 
+/ These words perform arithmetic and logic on 32-bit integers.
+/ 
+/ ----
+
+
+/ ----	- -- word # 32
+
+W32Name,
+
+	/ stringengize( - )
+55
+
+	.+0-W32Name
+	W32CFA-W31CFA
+W32CFA,
+	W32CFA-.		/ -
+W32PFA,
+/ - - Integer subtraction
+/ 
+/ M: ( a, b -> a-b )
+/ R: ( -> )
+/ 
+/ This word does integer subtraction.
+/ 
+/ Revision:
+/ 07/29/99 RLI - code version
+/ Fetch a
+	JMS I StupidLiteral0		/ 1
+	1
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidSwap1		/ SWAP
+	JMS I StupidMinus1		/ -
+	JMS I StupidFetch0		/ @
+/ Fetch b
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidFetch1		/ @
+/ Form the difference
+	JMS I StupidMinus1		/ -
+/ Drop b from the math stack
+	JMS I StupidLiteral1		/ 1
+	1
+	JMS I StupidFetchMP2		/ MP@
+	JMS I StupidSwap2		/ SWAP
+	JMS I StupidMinus2		/ -
+	JMS I StupidStoreMP1		/ MP!
+/ Replace a with the difference
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidStore1		/ !
+	JMS I StupidFetchNEXT0		/ NEXT@
+	JMS I StupidStorePC0		/ PC!
+
+
+/ ----	NEG -- word # 33
+
+W33Name,
+
+	/ stringengize( NEG )
+116
+105
+107
+
+	.+0-W33Name
+	W33CFA-W32CFA
+W33CFA,
+	W33CFA-.		/ NEG
+W33PFA,
+/ NEG - Form 2's complement of the top of the math stack.
+/ 
+/ M: ( a -> -a )
+/ R: ( -> )
+/ 
+/ Revision:
+/ 07/29/99 RLI - code version
+	JMS I StupidFetchMP0		/ MP@
+	JMS I StupidFetch0		/ @
+	JMS I StupidNeg0			/ NEG
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidStore1		/ !
+	JMS I StupidFetchNEXT0		/ NEXT@
+	JMS I StupidStorePC0		/ PC!
+
+
+/ ----	+ -- word # 22
+
+W22Name,
+
+	/ stringengize( + )
+53
+
+	.+0-W22Name
+	W22CFA-W33CFA
+W22CFA,
+	W22CFA-.		/ +
+W22PFA,
+/ + - Integer addition
+/ 
+/ M: ( a, b -> a+b )
+/ R: ( -> )
+/ 
+/ This word does integer addition.
+/ 
+/ Revision:
+/ 07/29/99 RLI - code version
+/ Fetch a
+	JMS I StupidLiteral0		/ 1
+	1
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidSwap1		/ SWAP
+	JMS I StupidMinus1		/ -
+	JMS I StupidFetch0		/ @
+/ Fetch b
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidFetch1		/ @
+/ Form the sum
+	JMS I StupidPlus1			/ +
+/ Drop b from the math stack
+	JMS I StupidLiteral1		/ 1
+	1
+	JMS I StupidFetchMP2		/ MP@
+	JMS I StupidSwap2		/ SWAP
+	JMS I StupidMinus2		/ -
+	JMS I StupidStoreMP1		/ MP!
+/ Replace a with the sum
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidStore1		/ !
+	JMS I StupidFetchNEXT0		/ NEXT@
+	JMS I StupidStorePC0		/ PC!
+
+
+/ ----	AND -- word # 34
+
+W34Name,
+
+	/ stringengize( AND )
+101
+116
+104
+
+	.+0-W34Name
+	W34CFA-W22CFA
+W34CFA,
+	W34CFA-.		/ AND
+W34PFA,
+/ AND - Bitwise logical AND
+/ 
+/ M: ( a, b -> a&b )
+/ R: ( -> )
+/ 
+/ Revisions:
+/ 
+/ 07/29/99 RLI - code version.
+/ Fetch a and b.
+	JMS I StupidFetchMP0		/ MP@
+	JMS I StupidFetch0		/ @
+	JMS I StupidLiteral1		/ 1
+	1
+	JMS I StupidFetchMP2		/ MP@
+	JMS I StupidSwap2		/ SWAP
+	JMS I StupidMinus2		/ -
+	JMS I StupidFetch1		/ @
+/ Form the result
+	JMS I StupidAnd1			/ AND
+/ Drop a from the math stack
+	JMS I StupidLiteral1		/ 1
+	1
+	JMS I StupidFetchMP2		/ MP@
+	JMS I StupidSwap2		/ SWAP
+	JMS I StupidMinus2		/ -
+	JMS I StupidStoreMP1		/ MP!
+/ Replace b with the result
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidStore1		/ !
+/ Execute the next FORTH word
+	JMS I StupidFetchNEXT0		/ NEXT@
+	JMS I StupidStorePC0		/ PC!
+
+
+/ ----	OR -- word # 35
+
+W35Name,
+
+	/ stringengize( OR )
+117
+122
+
+	.+0-W35Name
+	W35CFA-W34CFA
+W35CFA,
+	W35CFA-.		/ OR
+W35PFA,
+/ OR - Bitwise logical OR
+/ 
+/ M: ( a, b -> a or b )
+/ R: ( -> )
+/ 
+/ Revisions:
+/ 07/29/99 RLI - code version
+/ Fetch a
+	JMS I StupidLiteral0		/ 1
+	1
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidSwap1		/ SWAP
+	JMS I StupidMinus1		/ -
+	JMS I StupidFetch0		/ @
+/ Fetch b
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidFetch1		/ @
+/ Form the result
+	JMS I StupidOr1			/ OR
+/ Drop b from the math stack
+	JMS I StupidLiteral1		/ 1
+	1
+	JMS I StupidFetchMP2		/ MP@
+	JMS I StupidSwap2		/ SWAP
+	JMS I StupidMinus2		/ -
+	JMS I StupidStoreMP1		/ MP!
+/ Replace a with the result
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidStore1		/ !
+	JMS I StupidFetchNEXT0		/ NEXT@
+	JMS I StupidStorePC0		/ PC!
+
+
+/ ----	NOT -- word # 36
+
+W36Name,
+
+	/ stringengize( NOT )
+116
+117
+124
+
+	.+0-W36Name
+	W36CFA-W35CFA
+W36CFA,
+	W36CFA-.		/ NOT
+W36PFA,
+/ NOT - Form 1's complement of the top of the math stack.
+/ 
+/ M: ( a -> ~a )
+/ R: ( -> )
+/ 
+/ Revision:
+/ 07/29/99 RLI - code version
+	JMS I StupidFetchMP0		/ MP@
+	JMS I StupidFetch0		/ @
+	JMS I StupidNot0			/ NOT
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidStore1		/ !
+	JMS I StupidFetchNEXT0		/ NEXT@
+	JMS I StupidStorePC0		/ PC!
+
+
+/ ----	<< -- word # 37
+
+W37Name,
+
+	/ stringengize( << )
+74
+74
+
+	.+0-W37Name
+	W37CFA-W36CFA
+W37CFA,
+	W37CFA-.		/ <<
+W37PFA,
+/ << - Logical left shift
+/ 
+/ M: ( a, b -> a<<b )
+/ 
+/ Revisions:
+/ 07/29/99 RLI - code version
+/ Fetch a
+	JMS I StupidLiteral0		/ 1
+	1
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidSwap1		/ SWAP
+	JMS I StupidMinus1		/ -
+	JMS I StupidFetch0		/ @
+/ Fetch b
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidFetch1		/ @
+/ Form the result
+	JMS I StupidShiftLeft1		/ <<
+/ Drop b from the math stack
+	JMS I StupidLiteral1		/ 1
+	1
+	JMS I StupidFetchMP2		/ MP@
+	JMS I StupidSwap2		/ SWAP
+	JMS I StupidMinus2		/ -
+	JMS I StupidStoreMP1		/ MP!
+/ Replace a with the result
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidStore1		/ !
+	JMS I StupidFetchNEXT0		/ NEXT@
+	JMS I StupidStorePC0		/ PC!
+
+
+/ ----	>> -- word # 38
+
+W38Name,
+
+	/ stringengize( >> )
+76
+76
+
+	.+0-W38Name
+	W38CFA-W37CFA
+W38CFA,
+	W38CFA-.		/ >>
+W38PFA,
+/ >> - Logical right shift
+/ 
+/ M: ( a, b -> a>>b )
+/ R: ( -> )
+/ 
+/ Revisions:
+/ 07/29/99 RLI - code version
+/ Fetch a
+	JMS I StupidLiteral0		/ 1
+	1
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidSwap1		/ SWAP
+	JMS I StupidMinus1		/ -
+	JMS I StupidFetch0		/ @
+/ Fetch b
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidFetch1		/ @
+/ Form result
+	JMS I StupidShiftRight1		/ >>
+ / Drop b from the stack
+	JMS I StupidLiteral1		/ 1
+	1
+	JMS I StupidFetchMP2		/ MP@
+	JMS I StupidSwap2		/ SWAP
+	JMS I StupidMinus2		/ -
+	JMS I StupidStoreMP1		/ MP!
+/ Replace a with the result
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidStore1		/ !
+	JMS I StupidFetchNEXT0		/ NEXT@
+	JMS I StupidStorePC0		/ PC!
+/ ----
+/ 
+/ Comparisons
+/ 
+/ ----
+/ --	0< - Integer comparison to zero
+/ 
+/ ( a -> 1 iff a<0 )
+/ ( a -> 0 otherwise )
+/ 
+/ This implementation works by moving the sign bit to bit 0. It
+/ assumes >> is a logical shift.
+
+
+/ ----	0< -- word # 39
+
+W39Name,
+
+	/ stringengize( 0< )
+60
+74
+
+	.+0-W39Name
+	W39CFA-W38CFA
+W39CFA,
+	W4CFA-.		/ (:)
+W39PFA,
+	W40CFA-.		/ (LIT)
+	13		/ 11
+	W38CFA-.		/ >>
+	W5CFA-.		/ (;)
+/ --	< - Integer less-than comparison
+/ 
+/ ( a b -> 1 iff a<b )
+/ ( a b -> 0 otherwise )
+/ 
+/ This implementation works by changing the problem to 0< which
+/ is implemented above.
+
+
+/ ----	< -- word # 41
+
+W41Name,
+
+	/ stringengize( < )
+74
+
+	.+0-W41Name
+	W41CFA-W39CFA
+W41CFA,
+	W4CFA-.		/ (:)
+W41PFA,
+	W32CFA-.		/ -
+	W39CFA-.		/ 0<
+	W5CFA-.		/ (;)
+/ --	> - Integer greater-than comparison
+/ 
+/ ( a b -> 1 iff a>b )
+/ ( a b -> 0 otherwise )
+/ 
+/ This implementation works by changing the problem to 0< which is
+/ implemented above.
+
+
+/ ----	> -- word # 42
+
+W42Name,
+
+	/ stringengize( > )
+76
+
+	.+0-W42Name
+	W42CFA-W41CFA
+W42CFA,
+	W4CFA-.		/ (:)
+W42PFA,
+	W32CFA-.		/ -
+/ 	Possible results:
+/ 	  a-b<0 iff b>a, or a<b
+/ 	  a-b=0 iff b=a, or a=b
+/ 	  a-b>0 iff b<a, or a>b
+	W33CFA-.		/ NEG
+/ 	Possible results:
+/ 	  -(a-b)>0 iff b>a, or a<b
+/ 	  -(a-b)=0 iff b=a, or a=b
+/ 	  -(a-b)<0 iff b<a, or a>b
+	W39CFA-.		/ 0<
+	W5CFA-.		/ (;)
+/ --	0= - Integer comparison to zero
+/ 
+/ ( a -> 1 iff a=0 )
+/ ( a -> 0 otherwise )
+/ 
+/ Note that this serves as a logical NOT.
+/ 
+/ Revisions:	06/25/96 RLI - Oops, didn't work. Made it simpler.
+/ 		08/26/96 RLI - Oops. Did it backwards. Sigh.
+/ 
+/ : 0= if 1 else 0 endif ;
+
+
+/ ----	0= -- word # 43
+
+W43Name,
+
+	/ stringengize( 0= )
+60
+75
+
+	.+0-W43Name
+	W43CFA-W42CFA
+W43CFA,
+	W4CFA-.		/ (:)
+W43PFA,
+	W10CFA-.		/ (0BRANCH)
+	W430-.
+	W44CFA-.		/ 0
+	W8CFA-.		/ (BRANCH)
+	W431-.
+W430,
+	W21CFA-.		/ 1
+W431,
+	W5CFA-.		/ (;)
+/ --	= - Integer equals comparison
+/ 
+/ ( a b -> 1 iff a=b )
+/ ( a b -> 0 otherwise )
+/ 
+/ This implementation works by changing the problem to 0= which is
+/ defined above.
+
+
+/ ----	= -- word # 45
+
+W45Name,
+
+	/ stringengize( = )
+75
+
+	.+0-W45Name
+	W45CFA-W43CFA
+W45CFA,
+	W4CFA-.		/ (:)
+W45PFA,
+	W32CFA-.		/ -
+	W43CFA-.		/ 0=
+	W5CFA-.		/ (;)
+/ ----
+/ 
+/ Literals in the code
+/ 
+/ ----
+
+
+/ ----	(LIT) -- word # 40
+
+W40Name,
+
+	/ stringengize( (LIT) )
+50
+114
+111
+124
+51
+
+	.+0-W40Name
+	W40CFA-W45CFA
+W40CFA,
+	W40CFA-.		/ (LIT)
+W40PFA,
+/ (LIT) - Push a literal on the math stack
+/ 
+/ M: ( -> literal )
+/ R: ( -> )
+/ 
+/ This word knows how to push a literal onto the math stack. The 
+/ reference to (LIT) is followed by a cell containing the literal
+/ to be pushed; that cell  is fetched and pushed on the stack.
+/ 
+/ Revisions:
+/ 07/29/99 RLI - code version
+/ Make space for the literal on the math stack.
+	JMS I StupidLiteral0		/ 1
+	1
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidPlus1			/ +
+	JMS I StupidStoreMP0		/ MP!
+/ Fetch the literal and store it on the math stack.
+	JMS I StupidFetchIP0		/ IP@
+	JMS I StupidFetch0		/ @
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidStore1		/ !
+/ Bump IP past the literal and continue on.
+	JMS I StupidFetchIP0		/ IP@
+	JMS I StupidLiteral1		/ 1
+	1
+	JMS I StupidPlus1			/ +
+	JMS I StupidStoreIP0		/ IP!
+	JMS I StupidFetchNEXT0		/ NEXT@
+	JMS I StupidStorePC0		/ PC!
+/ ----
+/ 
+/ Frequently used constants
+/ 
+/ ----
+
+
+/ ----	0 -- word # 44
+
+W44Name,
+
+	/ stringengize( 0 )
+60
+
+	.+0-W44Name
+	W44CFA-W40CFA
+W44CFA,
+	W6CFA-.		/ (CONSTANT)
+W44PFA,
+	0
+
+
+/ ----	1 -- word # 21
+
+W21Name,
+
+	/ stringengize( 1 )
+61
+
+	.+0-W21Name
+	W21CFA-W44CFA
+W21CFA,
+	W6CFA-.		/ (CONSTANT)
+W21PFA,
+	1
+/ ----
+/ 
+/ Higher level output
+/ 
+/ ----
+/ --	.NYBBLE - Display high-order nybble of top of stack as ASCII hex
+/ 
+/ ( a -> a )
+/ 
+/ Revisions:	06/28/96 RLI - Removed assumption about word size.
+/ 		Well, it stell better be less than 256+4 bits.
+/ 			05/11/01 RLI - Tossed the "65-58" constant, because
+/ 			there was no elegant way to deal with it in a
+/ 			stupid conversion to PAL8.
+
+
+/ ----	.NYBBLE -- word # 46
+
+W46Name,
+
+	/ stringengize( .NYBBLE )
+56
+116
+131
+102
+102
+114
+105
+
+	.+0-W46Name
+	W46CFA-W21CFA
+W46CFA,
+	W4CFA-.		/ (:)
+W46PFA,
+	W20CFA-.		/ DUP
+	W40CFA-.		/ (LIT)
+	10		/ 8
+	W38CFA-.		/ >>
+	W40CFA-.		/ (LIT)
+	60		/ 48
+	W22CFA-.		/ +
+	W20CFA-.		/ DUP
+	W40CFA-.		/ (LIT)
+	71		/ 57
+	W42CFA-.		/ >
+	W10CFA-.		/ (0BRANCH)
+	W460-.
+	W40CFA-.		/ (LIT)
+	101		/ 65
+	W40CFA-.		/ (LIT)
+	72		/ 58
+	W32CFA-.		/ -
+	W22CFA-.		/ +
+W460,
+	W47CFA-.		/ EMIT
+	W5CFA-.		/ (;)
+/ --	.NYBBLES - Display a specified number of nybbles of the top of stack
+/ 	in hex.
+/ 
+/ ( a b -> )
+
+
+/ ----	.NYBBLES -- word # 48
+
+W48Name,
+
+	/ stringengize( .NYBBLES )
+56
+116
+131
+102
+102
+114
+105
+123
+
+	.+0-W48Name
+	W48CFA-W46CFA
+W48CFA,
+	W4CFA-.		/ (:)
+W48PFA,
+/ We need to move the high-order nybble of the value we're going to
+/ display to the high-order nybble of the longword we're going to
+/ display. To do that, we need to dork with b; since we need a copy
+/ later, we'll have to save it on the return stack.
+	W20CFA-.		/ DUP
+	W25CFA-.		/ >R
+/ Now we need to calculate how many nybbles we need to shift the value
+/ to the left so that the high-order bit of the first nybble we need
+/ to display is at the high-order bit of the top of the math stack.
+	W40CFA-.		/ (LIT)
+	3		/ 3
+	W23CFA-.		/ SWAP
+	W32CFA-.		/ -
+	W40CFA-.		/ (LIT)
+	2		/ 2
+	W37CFA-.		/ <<
+	W37CFA-.		/ <<
+/ Now we need to display b nybbles.
+	W26CFA-.		/ <R
+	W44CFA-.		/ 0
+	W49CFA-.		/ (DO)
+W480,
+	W46CFA-.		/ .NYBBLE
+	W40CFA-.		/ (LIT)
+	4		/ 4
+	W37CFA-.		/ <<
+	W50CFA-.		/ (LOOP)
+	W480-.
+/ We've now displayed the value, but we have a zero left on top of the
+/ stack. Drop it and exit.
+	W24CFA-.		/ DROP
+	W5CFA-.		/ (;)
+/ --	. - Display all of the nybbles in the top of stack in hex.
+/ 
+/ ( a -> )
+/ 
+/ Revisions:	06/26/96 RLI - Added a space after the number
+/ 		06/28/96 RLI - Removed assumption about word size
+
+
+/ ----	. -- word # 51
+
+W51Name,
+
+	/ stringengize( . )
+56
+
+	.+0-W51Name
+	W51CFA-W48CFA
+W51CFA,
+	W4CFA-.		/ (:)
+W51PFA,
+	W40CFA-.		/ (LIT)
+	3		/ 3
+	W48CFA-.		/ .NYBBLES
+	W40CFA-.		/ (LIT)
+	40		/ 32
+	W47CFA-.		/ EMIT
+	W5CFA-.		/ (;)
+/ --	TYPE - Display a counted string
+/ 
+/ ( a c -> )
+/ 
+/ c characters are displayed from memory starting at address a.
+
+
+/ ----	TYPE -- word # 52
+
+W52Name,
+
+	/ stringengize( TYPE )
+124
+131
+120
+105
+
+	.+0-W52Name
+	W52CFA-W51CFA
+W52CFA,
+	W4CFA-.		/ (:)
+W52PFA,
+	W40CFA-.		/ (LIT)
+	0		/ 0
+	W49CFA-.		/ (DO)
+W520,
+	W20CFA-.		/ DUP
+	W13CFA-.		/ B@
+	W47CFA-.		/ EMIT
+	W40CFA-.		/ (LIT)
+	1		/ 1
+	W22CFA-.		/ +
+	W50CFA-.		/ (LOOP)
+	W520-.
+	W24CFA-.		/ DROP
+	W5CFA-.		/ (;)
+/ --	COUNT - Extract info about a conted string in memory
+/ 
+/ ( a -> a+1 c )
+/ 
+/ Given the address of a counted string in memory, returns the
+/ address of the start of the string and the length of the string
+/ on the stack.
+
+
+/ ----	COUNT -- word # 53
+
+W53Name,
+
+	/ stringengize( COUNT )
+103
+117
+125
+116
+124
+
+	.+0-W53Name
+	W53CFA-W52CFA
+W53CFA,
+	W4CFA-.		/ (:)
+W53PFA,
+	W20CFA-.		/ DUP
+	W13CFA-.		/ B@
+	W23CFA-.		/ SWAP
+	W21CFA-.		/ 1
+	W22CFA-.		/ +
+	W23CFA-.		/ SWAP
+	W5CFA-.		/ (;)
+/ ----
+/ 
+/     Higher level input
+/ 
+/ These words are concerned with accepting a line of text from the user
+/ and chopping that line of text up into pieces.
+/ 
+/ The project-specific dictionary must provide a definition for
+/ INBUF, an array of at least 81 bytes (count byte, 79 character
+/ bytes, and space for the terminating NULL required by TOKEN).
+/ 
+/ ----
+/ --	?ABORT - Aborts if a key has been typed at the console
+/ 
+/ ( -> )
+/ 
+/ This word is handy for the bottom of a scope loop. It will break out
+/ of whatever is going on if a key is available at the console.
+
+
+/ ----	?ABORT -- word # 54
+
+W54Name,
+
+	/ stringengize( ?ABORT )
+77
+101
+102
+117
+122
+124
+
+	.+0-W54Name
+	W54CFA-W53CFA
+W54CFA,
+	W4CFA-.		/ (:)
+W54PFA,
+	W55CFA-.		/ ?KEY
+	W10CFA-.		/ (0BRANCH)
+	W540-.
+	W56CFA-.		/ ABORT
+W540,
+	W5CFA-.		/ (;)
+/ --	CR - Displays a carriage return on the console
+/ 
+/ ( -> )
+
+
+/ ----	CR -- word # 57
+
+W57Name,
+
+	/ stringengize( CR )
+103
+122
+
+	.+0-W57Name
+	W57CFA-W54CFA
+W57CFA,
+	W4CFA-.		/ (:)
+W57PFA,
+	W40CFA-.		/ (LIT)
+	15		/ 13
+	W47CFA-.		/ EMIT
+	W5CFA-.		/ (;)
+/ --	NL - Displays a newline ( <CR><LF> ) on the console
+/ 
+/ ( -> )
+
+
+/ ----	NL -- word # 58
+
+W58Name,
+
+	/ stringengize( NL )
+116
+114
+
+	.+0-W58Name
+	W58CFA-W57CFA
+W58CFA,
+	W4CFA-.		/ (:)
+W58PFA,
+	W57CFA-.		/ CR
+	W40CFA-.		/ (LIT)
+	12		/ 10
+	W47CFA-.		/ EMIT
+	W5CFA-.		/ (;)
+
+
+/ ----	INBUF -- word # 59
+
+W59Name,
+
+	/ stringengize( INBUF )
+111
+116
+102
+125
+106
+
+	.+0-W59Name
+	W59CFA-W58CFA
+W59CFA,
+	W7CFA-.		/ (VAR)
+W59PFA,
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+	0
+
+
+/ ----	IN -- word # 60
+
+W60Name,
+
+	/ stringengize( IN )
+111
+116
+
+	.+0-W60Name
+	W60CFA-W59CFA
+W60CFA,
+	W7CFA-.		/ (VAR)
+W60PFA,
+	0
+/ --	GETLINE - Accept a line of input from the console.
+/ 
+/ This word reads a line of input from the console, storing it in the
+/ string array INBUF. INBUF is arranged as a standard counted string;
+/ the first byte ( INBUF B@ ) is the length of the line and the
+/ remaining bytes are the data from the line.
+/ 
+/ The only control chracters recognized are <CR>, <BS>, and <DEL>.
+/ All other control characters are ignored.
+/ 
+/ Revisions:
+/ 
+/ 06/25/96 RLI - State K was drawn with its decision backwards (i.e.,
+/ 	it was going to state L if it received a non-control char).
+/ 06/26/96 RLI - Changed state R's CR to an NL. MOved a DUP in state
+/ 	D.
+/ 07/23/96 RLI - Typo in state F.
+
+
+/ ----	GETLINE -- word # 61
+
+W61Name,
+
+	/ stringengize( GETLINE )
+107
+105
+124
+114
+111
+116
+105
+
+	.+0-W61Name
+	W61CFA-W60CFA
+W61CFA,
+	W4CFA-.		/ (:)
+W61PFA,
+/ State A: iNitialize the current pointer into the INBUF array. IN
+/ contains the offset of the next byte to be stored into INBUF.
+W61a,
+	W40CFA-.		/ (LIT)
+	1		/ 1
+	W60CFA-.		/ IN
+	W16CFA-.		/ !
+/ State B: Accept input when we're at the beginning of the line.
+/ 
+/ At the beginning of the line, <BS> and <DEL> have no meaning; they
+/ need to be ignored. When one comes in, go to state C to decide
+/ whether it should be ignored. Non-control charactrs need to be
+/ accepted into the buffer; when one comes in, go to state D.
+W61b,
+	W62CFA-.		/ KEY
+	W63CFA-.		/ ISCONTROL
+	W10CFA-.		/ (0BRANCH)
+	W61d-.
+/ State C: A control character has arrived when we're at the beginning
+/ of the line. The only character of interest is <CR>; if the 
+/ character is <CR>, go to state R. Otherwise, go back to state B
+/ without doing anything with the control character.
+W61c,
+	W40CFA-.		/ (LIT)
+	15		/ 13
+	W32CFA-.		/ -
+	W10CFA-.		/ (0BRANCH)
+	W61r-.
+	W8CFA-.		/ (BRANCH)
+	W61b-.
+/ State D: We've received a non-control character. Append it to the
+/ buffer and bump the pointer into the buffer. If the pointer has gone
+/ past position 79 (we don't have to have to worry about whether or
+/ not the terminal wrapped), go to state E. Otherwise, go to state K.
+W61d,
+	W20CFA-.		/ DUP
+	W60CFA-.		/ IN
+	W12CFA-.		/ @
+	W59CFA-.		/ INBUF
+	W22CFA-.		/ +
+	W17CFA-.		/ B!
+	W47CFA-.		/ EMIT
+	W60CFA-.		/ IN
+	W19CFA-.		/ ++
+	W60CFA-.		/ IN
+	W12CFA-.		/ @
+	W40CFA-.		/ (LIT)
+	117		/ 79
+	W42CFA-.		/ >
+	W10CFA-.		/ (0BRANCH)
+	W61k-.
+/ State E: Accept input when we're at the end of the line.
+/ 
+/ At the end of the line, only the control characters have meaning.
+/ Since there's no space left in the buffer to store printing
+/ characters, we'll just ignore them. When one comes in, go to state
+/ F. When a control character comes in, go to state G.
+W61e,
+	W62CFA-.		/ KEY
+	W63CFA-.		/ ISCONTROL
+	W43CFA-.		/ 0=
+	W10CFA-.		/ (0BRANCH)
+	W61g-.
+/ State F: Ignore a printing character at the end of the line.
+/ 
+/ We've received a printing character at the end of the line. There's
+/ no space for it in the buffer, so just toss it and go back to
+/ state E.
+W61f,
+	W24CFA-.		/ DROP
+	W8CFA-.		/ (BRANCH)
+	W61e-.
+/ State G: We have a control character at the end of the line. Look
+/ to see if it's <CR>; if so, go to state Q. Otherwise, go to
+/ state H.
+W61g,
+	W20CFA-.		/ DUP
+	W40CFA-.		/ (LIT)
+	15		/ 13
+	W32CFA-.		/ -
+	W10CFA-.		/ (0BRANCH)
+	W61q-.
+/ State H: It's not <CR>. check for <BS>. If it's <BS>, go to state P.
+/ Otherwise, go to state I.
+W61h,
+	W20CFA-.		/ DUP
+	W40CFA-.		/ (LIT)
+	10		/ 8
+	W32CFA-.		/ -
+	W10CFA-.		/ (0BRANCH)
+	W61p-.
+/ State I: It's not <BS>. Check for <DEL>. If it's <DEL>, go to state
+/ O. Otherwise, go back to state E.
+W61i,
+	W40CFA-.		/ (LIT)
+	177		/ 127
+	W32CFA-.		/ -
+	W10CFA-.		/ (0BRANCH)
+	W61o-.
+	W8CFA-.		/ (BRANCH)
+	W61e-.
+/ State J: (deleted)
+/ State K: Accept a character in the middle of the buffer. All of the
+/ control characters and printing characters have meaning. If a
+/ control character comes in, go to state L. Otherwise, go to
+/ state D.
+W61k,
+	W62CFA-.		/ KEY
+	W63CFA-.		/ ISCONTROL
+	W10CFA-.		/ (0BRANCH)
+	W61d-.
+/ State L: We've received a control character in the middle of the
+/ buffer. Look to see if it's <CR>. If so, go to staet Q. Otherwise,
+/ go to state M.
+W61l,
+	W20CFA-.		/ DUP
+	W40CFA-.		/ (LIT)
+	15		/ 13
+	W32CFA-.		/ -
+	W10CFA-.		/ (0BRANCH)
+	W61q-.
+/ State M: Look to see if it's <BS>. If so, go to state P. Otherwise,
+/ go to state N.
+W61m,
+	W20CFA-.		/ DUP
+	W40CFA-.		/ (LIT)
+	10		/ 8
+	W32CFA-.		/ -
+	W10CFA-.		/ (0BRANCH)
+	W61p-.
+/ State N: Look to see if it's <DEL>. If so, go to state O. Otherwise,
+/ go to state K.
+W61n,
+	W40CFA-.		/ (LIT)
+	177		/ 127
+	W32CFA-.		/ -
+	W43CFA-.		/ 0=
+	W10CFA-.		/ (0BRANCH)
+	W61k-.
+/ State O: We've received either a <BS> or a <DEL>. Echo <BS> <BS> to
+/ erase the last printable character from the screen. Decrement IN to
+/ erase the last printable character from INBUF. If IN has gone to
+/ the beginning of the line, go to state B. Otherwise, go to state K.
+W61o,
+	W40CFA-.		/ (LIT)
+	10		/ 8
+	W20CFA-.		/ DUP
+	W47CFA-.		/ EMIT
+	W40CFA-.		/ (LIT)
+	40		/ 32
+	W47CFA-.		/ EMIT
+	W47CFA-.		/ EMIT
+	W60CFA-.		/ IN
+	W12CFA-.		/ @
+	W21CFA-.		/ 1
+	W32CFA-.		/ -
+	W20CFA-.		/ DUP
+	W60CFA-.		/ IN
+	W16CFA-.		/ !
+	W21CFA-.		/ 1
+	W32CFA-.		/ -
+	W10CFA-.		/ (0BRANCH)
+	W61b-.
+	W8CFA-.		/ (BRANCH)
+	W61k-.
+/ State P: We've received a <BS>. We need to go to state O, but we've
+/ still got the character on the stack so it could be checked for
+/ <DEL> if it wasn't <BS>. Drop the character from the stack and go
+/ to state O.
+W61p,
+	W24CFA-.		/ DROP
+	W8CFA-.		/ (BRANCH)
+	W61o-.
+/ State Q: We've received a <CR>. We need to go to state R, but we've
+/ still got the character on the stack so it could be checked for
+/ <BS> and <DEL> if it wasn't <CR>. Drop the character from the stack
+/ and go to state R.
+W61q,
+	W24CFA-.		/ DROP
+/ State R: We're done. Ensure the line is null-termianted becasue
+/ TOKEN requires this. Update the count byte of INBUF from IN; since
+/ IN points at the _next_ character that would be filled by a non-
+/ printing character, the number of characters in INBUF is IN-1.
+/ 
+/ After we're done, IN is initialized to 1 to make TOKEN's life
+/ easier.
+W61r,
+	W44CFA-.		/ 0
+	W60CFA-.		/ IN
+	W12CFA-.		/ @
+	W59CFA-.		/ INBUF
+	W22CFA-.		/ +
+	W17CFA-.		/ B!
+	W60CFA-.		/ IN
+	W12CFA-.		/ @
+	W21CFA-.		/ 1
+	W32CFA-.		/ -
+	W59CFA-.		/ INBUF
+	W17CFA-.		/ B!
+	W21CFA-.		/ 1
+	W60CFA-.		/ IN
+	W16CFA-.		/ !
+	W58CFA-.		/ NL
+W61z,
+	W5CFA-.		/ (;)
+/ --	ISCONTROL - See if an ASCII character is a control character
+/ 
+/ ( c -> c f )
+/ 
+/ f = 0 if c is not a control character
+/ f = 1 if c is a control character
+/ 
+/ A control character is either smaller than ` ' or <DEL>.
+/ 
+/ Revisions:
+/ 
+/ 06/25/96 RLI - Ambiguous state diagramming turned into an oops in
+/ 	state A. Swapped states B and C to compensate without
+/ 	adding extra code.
+
+
+/ ----	ISCONTROL -- word # 63
+
+W63Name,
+
+	/ stringengize( ISCONTROL )
+111
+123
+103
+117
+116
+124
+122
+117
+114
+
+	.+0-W63Name
+	W63CFA-W61CFA
+W63CFA,
+	W4CFA-.		/ (:)
+W63PFA,
+/ State A: Look to see if it's smaller than ' '. If so, go to C.
+/ Otherwise, go to B.
+W63a,
+	W20CFA-.		/ DUP
+	W40CFA-.		/ (LIT)
+	40		/ 32
+	W41CFA-.		/ <
+	W10CFA-.		/ (0BRANCH)
+	W63c-.
+/ State B: It's smaller than ' ', but we lost that fact when we did
+/ the (0BRANCH). Push a true back on the stack and exit.
+W63b,
+	W21CFA-.		/ 1
+	W8CFA-.		/ (BRANCH)
+	W63z-.
+/ State C: It's not smaller than ' '; is it <DEL>? Check and exit.
+W63c,
+	W20CFA-.		/ DUP
+	W40CFA-.		/ (LIT)
+	177		/ 127
+	W45CFA-.		/ =
+W63z,
+	W5CFA-.		/ (;)
+/ --	NEXTCHAR - Returns the next character from the input buffer
+/ 
+/ ( -> c )
+/ 
+/ The character at INBUF[ IN ] is fetched. IN is bumped if the
+/ character was not null.
+
+
+/ ----	NEXTCHAR -- word # 64
+
+W64Name,
+
+	/ stringengize( NEXTCHAR )
+116
+105
+130
+124
+103
+110
+101
+122
+
+	.+0-W64Name
+	W64CFA-W63CFA
+W64CFA,
+	W4CFA-.		/ (:)
+W64PFA,
+	W59CFA-.		/ INBUF
+	W60CFA-.		/ IN
+	W12CFA-.		/ @
+	W22CFA-.		/ +
+	W13CFA-.		/ B@
+	W20CFA-.		/ DUP
+	W10CFA-.		/ (0BRANCH)
+	W640-.
+	W60CFA-.		/ IN
+	W19CFA-.		/ ++
+W640,
+	W5CFA-.		/ (;)
+/ --	TOKEN - return the next token from INBUF
+/ 
+/ ( -> a c )
+/ 
+/ This word looks at the next string from INBUF to find the next
+/ token. Blanks are skipped until a non-blank is found; the address
+/ of the first non-blank is 'a'. The non-blanks are then counted until
+/ a blank is found; the count of non-blanks is 'c'.
+/ 
+/ NEXTCHAR is used to fetch characters from INBUF. NEXTCHAR uses IN
+/ to tell it where the next character is and updates IN after it
+/ fetches a character. Both NEXTCHAR and TOKEN assume there is a
+/ null following INBUF.
+/ 
+/ TOKEN assumes the only whitespace characters it will encounter
+/ in INBUF are NULL and space.
+
+
+/ ----	TOKEN -- word # 65
+
+W65Name,
+
+	/ stringengize( TOKEN )
+124
+117
+113
+105
+116
+
+	.+0-W65Name
+	W65CFA-W64CFA
+W65CFA,
+	W4CFA-.		/ (:)
+W65PFA,
+/ State A: Form the address of the first character we'll examine and
+/ go to state B.
+W65a,
+	W59CFA-.		/ INBUF
+	W60CFA-.		/ IN
+	W12CFA-.		/ @
+	W22CFA-.		/ +
+/ State B: We've not yet seen a non-space character.
+/ 
+/ Get the next character and check for the null terminator. If we've
+/ hit the null terminator, just exit; the copy of the null we would
+/ need for state C if it weren't null will be a zero to tell the
+/ caller that we hit the null before seeing anything. If the
+/ character is not null, go to state C.
+W65b,
+	W64CFA-.		/ NEXTCHAR
+	W20CFA-.		/ DUP
+	W10CFA-.		/ (0BRANCH)
+	W65z-.
+/ State C: It's not a null, look for a space. If it's a space, go to
+/ state H. Otherwise, go to state D.
+W65c,
+	W40CFA-.		/ (LIT)
+	40		/ 32
+	W32CFA-.		/ -
+	W10CFA-.		/ (0BRANCH)
+	W65h-.
+/ State D: We've found our first non-space character. The token is
+/ at least one character long. Put the initial count on the stack
+/ and go to state E.
+W65d,
+	W21CFA-.		/ 1
+/ State E: Get the next character and look to see if it's the null
+/ at the end of the buffer. If so, go to state I. Otherwise, go to
+/ state F.
+W65e,
+	W64CFA-.		/ NEXTCHAR
+	W20CFA-.		/ DUP
+	W10CFA-.		/ (0BRANCH)
+	W65i-.
+/ State F: We've not found the end of the string, but have we found
+/ the end of the token? If the character is space, exit; the correct
+/ count will be on top of the stack. Otherwise, go to state G.
+W65f,
+	W40CFA-.		/ (LIT)
+	40		/ 32
+	W32CFA-.		/ -
+	W10CFA-.		/ (0BRANCH)
+	W65z-.
+/ State G: We have another non-space character. Count it and go back
+/ to state E.
+W65g,
+	W21CFA-.		/ 1
+	W22CFA-.		/ +
+	W8CFA-.		/ (BRANCH)
+	W65e-.
+/ State H: We have another space character before the token. Bump the
+/ pointer to the first non-space character and go back to state B.
+W65h,
+	W21CFA-.		/ 1
+	W22CFA-.		/ +
+	W8CFA-.		/ (BRANCH)
+	W65b-.
+/ State I: We've found the null at the end of the buffer immediately
+/ following the token. We have an extry copy of the null on the stack
+/ so that state F could check for a space. Drop the extra copy and
+/ exit.
+W65i,
+	W24CFA-.		/ DROP
+/ *** EXIT ***
+W65z,
+	W5CFA-.		/ (;)
+/ ----
+/ 
+/ String comparisons
+/ 
+/ These are primarily used when looking up a word in the dictionary
+/ 
+/ ----
+/ --	$= - String comparison
+/ 
+/ ( a2 c2 a1 c1 -> f )
+/ 
+/ 'f' is 0 if the string described by a1,c1 is not equal to the
+/ string described by a2,c2. 'f' is 1 if they are equal.
+
+
+/ ----	$= -- word # 66
+
+W66Name,
+
+	/ stringengize( $= )
+44
+75
+
+	.+0-W66Name
+	W66CFA-W65CFA
+W66CFA,
+	W4CFA-.		/ (:)
+W66PFA,
+/ State A: Compare the lengths of the strings; if the strings are
+/ equal, they must have the same length. If the lengths differ,
+/ go to stae E. Othewrise, go to state B.
+W66a,
+	W23CFA-.		/ SWAP
+	W25CFA-.		/ >R
+	W29CFA-.		/ OVER
+	W32CFA-.		/ -
+	W43CFA-.		/ 0=
+	W10CFA-.		/ (0BRANCH)
+	W66e-.
+/ State B: Arrange the stack such that the number of characters to be
+/ compared is the top of the math staack and the addresses of the two
+/ strings are next on the math stack. If the number of characters to
+/ compare is zero, we're trying to compare two null strings; go to
+/ state F since the strings are obviously equal. Otherwise, go to 
+/ state C.
+W66b,
+	W26CFA-.		/ <R
+	W23CFA-.		/ SWAP
+	W20CFA-.		/ DUP
+	W10CFA-.		/ (0BRANCH)
+	W66f-.
+/ State C: Stash the number of characters to compare on the return
+/ stack where it'll be safe for a moment. Fetch the next character
+/ from both strings and compare that character. If they are equal,
+/ go to state D. Otherwise, go to state E.
+W66c,
+	W25CFA-.		/ >R
+	W29CFA-.		/ OVER
+	W13CFA-.		/ B@
+	W29CFA-.		/ OVER
+	W13CFA-.		/ B@
+	W32CFA-.		/ -
+	W43CFA-.		/ 0=
+	W10CFA-.		/ (0BRANCH)
+	W66e-.
+/ State D: The strings are equal so far. Bump the pointers into the
+/ strings and decrement the count of characters left to compare.
+/ If we've compared all of the characters, go to state F. Otherwise,
+/ go to state B.
+W66d,
+	W21CFA-.		/ 1
+	W22CFA-.		/ +
+	W23CFA-.		/ SWAP
+	W21CFA-.		/ 1
+	W22CFA-.		/ +
+	W26CFA-.		/ <R
+	W21CFA-.		/ 1
+	W32CFA-.		/ -
+	W20CFA-.		/ DUP
+	W10CFA-.		/ (0BRANCH)
+	W66f-.
+	W8CFA-.		/ (BRANCH)
+	W66c-.
+/ State E: We've found a difference between the strings; they aren't
+/ equal. Clean up the math and return stacks and push a zero onto
+/ the math stack to indicate the inequality. Exit.
+W66e,
+	W26CFA-.		/ <R
+	W24CFA-.		/ DROP
+	W24CFA-.		/ DROP
+	W24CFA-.		/ DROP
+	W44CFA-.		/ 0
+	W8CFA-.		/ (BRANCH)
+	W66z-.
+/ State F: We've made it to the end of the strings without finding a
+/ difference; they must be equal. Clean up the math stack and push a
+/ 1 to indicate the equality. Exit.
+W66f,
+	W24CFA-.		/ DROP
+	W24CFA-.		/ DROP
+	W24CFA-.		/ DROP
+	W21CFA-.		/ 1
+/ *** EXIT ***
+W66z,
+	W5CFA-.		/ (;)
+/ ----
+/ 
+/ Simple directory manipulation
+/ 
+/ ----
+
+
+/ ----	LAST -- word # 67
+
+W67Name,
+
+	/ stringengize( LAST )
+114
+101
+123
+124
+
+	.+0-W67Name
+	W67CFA-W66CFA
+W67CFA,
+	W7CFA-.		/ (VAR)
+W67PFA,
+	0
+/ --	ID>$ - Turn a word name into a counted string description
+/ 
+/ ( cfa -> a c )
+/ 
+/ Given the address of a word's CFA, this word returns the address of
+/ the word's name (a) and the length of the word's name (c).
+/ 
+/ Revisions:
+/ 
+/ 06/26/96 RLI - Number of small oopses. First, the value for
+/ 	%flagoffset is given as a byte offset from the CFA. This
+/ 	value is negative, so we need to _add_ it to the CFA instead
+/ 	of subtracting it. Second, the SWAP was accidentally omitted
+/ 	from state A. Third, the SWAP in stateh C was not necessary
+/ 	as the address of the name is smaller than the address of
+/ 	the end of the string, not vice-versa.
+
+
+/ ----	ID>$ -- word # 68
+
+W68Name,
+
+	/ stringengize( ID>$ )
+111
+104
+76
+44
+
+	.+0-W68Name
+	W68CFA-W67CFA
+W68CFA,
+	W4CFA-.		/ (:)
+W68PFA,
+/ State A: Given the CFA, calculate the address of the word's name.
+/ First calculate the address of the flags byte (which contains the
+/ name's length) then fetch the flags byte and strip off the flags.
+/ From that, calculate the address of the start of the word's name.
+/ 
+/ Since a name may be padded with nulls to longword align the
+/ definition, the length of the word's name given in the word's header
+/ may not be the actual length of the word's name; we have to strip
+/ any nulls that may follow the name.
+W68a,
+	W40CFA-.		/ (LIT)
+	37777777776		/ -2
+	W22CFA-.		/ +
+	W20CFA-.		/ DUP
+	W20CFA-.		/ DUP
+	W12CFA-.		/ @
+	W40CFA-.		/ (LIT)
+	77		/ 63
+	W34CFA-.		/ AND
+	W32CFA-.		/ -
+	W23CFA-.		/ SWAP
+/ State B: Move to the previous character (the first time, this will
+/ move from the Flag byte to the last byte of the name). If the new
+/ character is a null, do it again. Otherwise, go to state C.
+W68b,
+	W21CFA-.		/ 1
+	W32CFA-.		/ -
+	W20CFA-.		/ DUP
+	W13CFA-.		/ B@
+	W10CFA-.		/ (0BRANCH)
+	W68b-.
+/ State C: We've found the address of the last non-null character of
+/ the name, now calculate the length of the name. Exit.
+W68c,
+	W29CFA-.		/ OVER
+	W32CFA-.		/ -
+	W21CFA-.		/ 1
+	W22CFA-.		/ +
+/ *** EXIT ***
+W68z,
+	W5CFA-.		/ (;)
+/ --	PREV - Return the address of the previous word's CFA
+/ 
+/ 	( cfa -> cfa )
+/ 
+/ Given the address of a word's CFA, this word will return either the
+/ address of the CFA of the previous word in the dictionary or zero if
+/ the given word is the first word in the dictionary.
+/ 
+/ Since this word returns zero when it encounters the first word, you
+/ cannot have a word which has its CFA at address zero. Since there
+/ are header items before the CFA, I don't think this is a problem.
+/ 
+/ Revisions:
+/ 
+/ 06/25/96 RLI - Fixed state C, which was coded to assume the CFA
+/ 	address pointed to a 16-bit link field. Sigh.
+/ 06/28/96 RLI - Modified to use cell-sized link field.
+
+
+/ ----	PREV -- word # 69
+
+W69Name,
+
+	/ stringengize( PREV )
+120
+122
+105
+126
+
+	.+0-W69Name
+	W69CFA-W68CFA
+W69CFA,
+	W4CFA-.		/ (:)
+W69PFA,
+/ State A: Fetch the flag word for this word and examine the End flag.
+/ If it's set, go to state B. Otherwise, go to state C.
+W69a,
+	W20CFA-.		/ DUP
+	W40CFA-.		/ (LIT)
+	37777777776		/ -2
+	W22CFA-.		/ +
+	W12CFA-.		/ @
+	W40CFA-.		/ (LIT)
+	100		/ 64
+	W34CFA-.		/ AND
+	W10CFA-.		/ (0BRANCH)
+	W69c-.
+/ State B: This is the first word in the dictionary. Return a zero.
+W69b,
+	W24CFA-.		/ DROP
+	W44CFA-.		/ 0
+	W8CFA-.		/ (BRANCH)
+	W69z-.
+/ State C: This is not the first word in the dictionary. Fetch the
+/ address of the previous word and exit.
+W69c,
+	W20CFA-.		/ DUP
+	W40CFA-.		/ (LIT)
+	37777777777		/ -1
+	W22CFA-.		/ +
+	W12CFA-.		/ @
+	W32CFA-.		/ -
+/ *** EXIT ***
+W69z,
+	W5CFA-.		/ (;)
+/ --	VLIST - Display the names of all words in the dictionary
+/ 
+/ ( -> )
+/ 
+/ This word traverses the dictionary, displaying the name of each
+/ word in the dictionary.
+/ 
+/ Revisions:
+/ 
+/ 06/26/96 RLI - Added a space after each name is displayed.
+
+
+/ ----	VLIST -- word # 70
+
+W70Name,
+
+	/ stringengize( VLIST )
+126
+114
+111
+123
+124
+
+	.+0-W70Name
+	W70CFA-W69CFA
+W70CFA,
+	W4CFA-.		/ (:)
+W70PFA,
+/ State A: Begin at LAST. Go to state B.
+W70a,
+	W67CFA-.		/ LAST
+	W12CFA-.		/ @
+/ State B: Look to see if we've found the end of the dictionary. If
+/ so, go to state D. Otherwise, go to state C.
+W70b,
+	W20CFA-.		/ DUP
+	W10CFA-.		/ (0BRANCH)
+	W70d-.
+/ State C: We've not found the end of the dictionary. Display this
+/ word's name and move to the previous word. Go back to state B.
+W70c,
+	W20CFA-.		/ DUP
+	W68CFA-.		/ ID>$
+	W52CFA-.		/ TYPE
+	W40CFA-.		/ (LIT)
+	40		/ 32
+	W47CFA-.		/ EMIT
+	W69CFA-.		/ PREV
+	W8CFA-.		/ (BRANCH)
+	W70b-.
+/ State D: We've found the end of the dictionary. Drop the zero from
+/ the stack and exit.
+W70d,
+	W24CFA-.		/ DROP
+/ *** EXIT ***
+W70z,
+	W5CFA-.		/ (;)
+/ --	FIND - Find a word in the dictionary given its name
+/ 
+/ ( a c -> a c cfa )
+/ 
+/ Given a counted string containing the name of a word, this word
+/ looks it up in the dictionary and returns its CFA. If the word is
+/ not in the dictionary, zero is returned for the CFA.
+
+
+/ ----	FIND -- word # 71
+
+W71Name,
+
+	/ stringengize( FIND )
+106
+111
+116
+104
+
+	.+0-W71Name
+	W71CFA-W70CFA
+W71CFA,
+	W4CFA-.		/ (:)
+W71PFA,
+/ State A: Begin at the last word in the dictionary.
+W71a,
+	W67CFA-.		/ LAST
+	W12CFA-.		/ @
+	W25CFA-.		/ >R
+/ State B: Take a look at the next word we're going to examine. If 
+/ we've found the end of the dictionary, go to state D. Otherwise,
+/ go to state C.
+W71b,
+	W27CFA-.		/ R
+	W10CFA-.		/ (0BRANCH)
+	W71d-.
+/ State C: We've not found the word yet. Compare the string with the
+/ word's name. If they matched, go to state D. Otherwise, go to state
+/ E.
+W71c,
+	W29CFA-.		/ OVER
+	W29CFA-.		/ OVER
+	W27CFA-.		/ R
+	W68CFA-.		/ ID>$
+	W66CFA-.		/ $=
+	W10CFA-.		/ (0BRANCH)
+	W71e-.
+/ State D: We've reached the end of the search; either we've found the
+/ word (and the address of the word's CFA is on the return stack) or
+/ we've hit the end of the dictionary (and zero is on the return
+/ stack). In either case, we need to return whatever is on the
+/ return stack; pop it into the math stack and exit.
+W71d,
+	W26CFA-.		/ <R
+	W8CFA-.		/ (BRANCH)
+	W71z-.
+/ State E: This word didn't match. Advance to the previous word and go
+/ to state B.
+W71e,
+	W26CFA-.		/ <R
+	W69CFA-.		/ PREV
+	W25CFA-.		/ >R
+	W8CFA-.		/ (BRANCH)
+	W71b-.
+/ *** EXIT ***
+W71z,
+	W5CFA-.		/ (;)
+
+
+/ ----	DIGITMAP -- word # 72
+
+W72Name,
+
+	/ stringengize( DIGITMAP )
+104
+111
+107
+111
+124
+115
+101
+120
+
+	.+0-W72Name
+	W72CFA-W71CFA
+W72CFA,
+	W7CFA-.		/ (VAR)
+W72PFA,
+/ DIGITMAP
+/ 
+/ M: ( -> Address of DIGITMAP's definition )
+/ R: ( -> )
+/ 
+/ DIGITMAP is a word containing a bitmap identifying characters as
+/ being digits; a bit set in DIGITMAP indicates the character will be
+/ identified as a digit.
+/ 
+/ Revisions:
+/ 07/29/99 RLI - code version
+/ Character codes 00 through 0f; control characters.
+	0
+	0
+/ Character codes 01 through 1f; more control characters.
+	0
+	0
+/ Character codes 20 through 2f; punctuation. '.' will be accepted as
+/ a digit so it may be used as a separator for 32-bit hex numbers to make
+/ typing them easier.
+	0
+	100
+/ Character codes 30 through 3f; decimal digits and more punctuation
+	377
+	3
+/ Character codes 40 through 4f; @ and uppercase letters
+	176
+	0
+/ Character codes 50 through 5f; more uppercase letters
+	0
+	0
+/ Character codes 60 through 6f; lower case letters
+	176
+	0
+/ Character codes 70 through 7f; more lower case letters
+	0
+	0
+/ --	ISDIGIT - Look to see if a character is a hexadecimal digit
+/ 
+/ ( c -> f )
+/ 
+/ 'f' is 0 if the character 'c' is not a hex digit. 'f' is non-zero
+/ if 'c' is a hex digit.
+/ 
+/ ISDIGIT works by turning the character into a byte offset into
+/ DIGITMAP and a bit mask for that byte. 'f' will actually be the
+/ result of ANDingthe selected by of DIGITMAP with the bitmask
+/ generated from 'c', so don't count on it being 1 if it's not 0.
+
+
+/ ----	ISDIGIT -- word # 73
+
+W73Name,
+
+	/ stringengize( ISDIGIT )
+111
+123
+104
+111
+107
+111
+124
+
+	.+0-W73Name
+	W73CFA-W72CFA
+W73CFA,
+	W4CFA-.		/ (:)
+W73PFA,
+	W20CFA-.		/ DUP
+	W40CFA-.		/ (LIT)
+	3		/ 3
+	W38CFA-.		/ >>
+	W23CFA-.		/ SWAP
+	W40CFA-.		/ (LIT)
+	7		/ 7
+	W34CFA-.		/ AND
+	W21CFA-.		/ 1
+	W23CFA-.		/ SWAP
+	W37CFA-.		/ <<
+	W23CFA-.		/ SWAP
+	W72CFA-.		/ DIGITMAP
+	W22CFA-.		/ +
+	W13CFA-.		/ B@
+	W34CFA-.		/ AND
+	W5CFA-.		/ (;)
+/ --	>NYBBLE - Convert a character to a binary hex nybble
+/ 
+/ ( c -> n )
+
+
+/ ----	>NYBBLE -- word # 74
+
+W74Name,
+
+	/ stringengize( >NYBBLE )
+76
+116
+131
+102
+102
+114
+105
+
+	.+0-W74Name
+	W74CFA-W73CFA
+W74CFA,
+	W4CFA-.		/ (:)
+W74PFA,
+/ State A: Look to see if we have a decimal digit or an alphabetic
+/ hext digit. If we have a decimal digit, go to state C.
+W74a,
+	W20CFA-.		/ DUP
+	W40CFA-.		/ (LIT)
+	100		/ 64
+	W34CFA-.		/ AND
+	W10CFA-.		/ (0BRANCH)
+	W74c-.
+/ State B: We have an alphabetix hex digit. We'll have to add 9 when
+/ we're done to get the proper value. Go to state D.
+W74b,
+	W40CFA-.		/ (LIT)
+	11		/ 9
+	W8CFA-.		/ (BRANCH)
+	W74d-.
+/ State C: We have a decimal digit. We'll have to add 0 when we're
+/ done to get the proper value. Go to state D.
+W74c,
+	W44CFA-.		/ 0
+/ State D: Extract the low nybble and add the fudge factor. Exit.
+W74d,
+	W23CFA-.		/ SWAP
+	W40CFA-.		/ (LIT)
+	17		/ 15
+	W34CFA-.		/ AND
+	W22CFA-.		/ +
+/ *** EXIT ***
+W74z,
+	W5CFA-.		/ (;)
+/ --	>NYBBLES - Convert a counted string to a binary integer
+/ 
+/ ( a c -> n )
+/ 
+/ This word assumes every character in the string is either a valid
+/ digit or '.'; that is, it does not checking on the characters other
+/ than skipping perios.
+/ 
+/ Revisions:
+/ 
+/ 06/26/96 RLI - Both state B and E were advancing the pointer into
+/ 	the digit string.
+
+
+/ ----	>NYBBLES -- word # 75
+
+W75Name,
+
+	/ stringengize( >NYBBLES )
+76
+116
+131
+102
+102
+114
+105
+123
+
+	.+0-W75Name
+	W75CFA-W74CFA
+W75CFA,
+	W4CFA-.		/ (:)
+W75PFA,
+/ State A: Stuff an initial value for n (0) onto th emath stack and
+/ start the do loop stuff. Go to state B.
+W75a,
+	W44CFA-.		/ 0
+	W23CFA-.		/ SWAP
+	W44CFA-.		/ 0
+	W49CFA-.		/ (DO)
+W750,
+/ State B: We have to add another digit to the value. Fetch the
+/ character to be converted and look to see if it's a '.'. If it is,
+/ go to state D to ignore the character. Otherwise, go to state C.
+W75b,
+	W29CFA-.		/ OVER
+	W13CFA-.		/ B@
+	W20CFA-.		/ DUP
+	W40CFA-.		/ (LIT)
+	56		/ 46
+	W32CFA-.		/ -
+	W10CFA-.		/ (0BRANCH)
+	W75d-.
+/ State C: We have a digit to convert. Convert the digit, make space
+/ for the new nybble (by shifting the old value over a nybble), and
+/ add the new nybble into the value. Go to state E.
+W75c,
+	W74CFA-.		/ >NYBBLE
+	W23CFA-.		/ SWAP
+	W40CFA-.		/ (LIT)
+	4		/ 4
+	W37CFA-.		/ <<
+	W22CFA-.		/ +
+	W8CFA-.		/ (BRANCH)
+	W75e-.
+/ State D: We need to ignore this character. Drop it from the stack
+/ and go to state E.
+W75d,
+	W24CFA-.		/ DROP
+/ State E: Bump the address from which we will fetch the next
+/ character. If we're not done, go to state B. Otherwise, go to
+/ state F.
+W75e,
+	W23CFA-.		/ SWAP
+	W21CFA-.		/ 1
+	W22CFA-.		/ +
+	W23CFA-.		/ SWAP
+	W50CFA-.		/ (LOOP)
+	W750-.
+/ State F: We're done. Drop the character address from the stack and
+/ exit.
+W75f,
+	W23CFA-.		/ SWAP
+	W24CFA-.		/ DROP
+/ *** EXIT ***
+W75z,
+	W5CFA-.		/ (;)
+/ --	ISNUMBER - Examine a counted string to see if it's a number
+/ 
+/ ( a c -> a c f )
+/ 
+/ 'f' is 0 if any character in the string is not a digit. 'f'. is a 1
+/ if all characters in the string are digits.
+
+
+/ ----	ISNUMBER -- word # 76
+
+W76Name,
+
+	/ stringengize( ISNUMBER )
+111
+123
+116
+125
+115
+102
+105
+122
+
+	.+0-W76Name
+	W76CFA-W75CFA
+W76CFA,
+	W4CFA-.		/ (:)
+W76PFA,
+/ State A: Copy the string particulars and start the do loop. Go to
+/ state B.
+W76a,
+	W29CFA-.		/ OVER
+	W29CFA-.		/ OVER
+	W44CFA-.		/ 0
+	W49CFA-.		/ (DO)
+W760,
+/ State B: Grap the next character and see if it's a digit. If so,
+/ go to state C. Otherwise, go to state E.
+W76b,
+	W20CFA-.		/ DUP
+	W13CFA-.		/ B@
+	W73CFA-.		/ ISDIGIT
+	W10CFA-.		/ (0BRANCH)
+	W76e-.
+/ State C: We have a digit. Bump the character address. If we're
+/ done, go to staet D. Otherwise, go back to state B.
+W76c,
+	W21CFA-.		/ 1
+	W22CFA-.		/ +
+	W50CFA-.		/ (LOOP)
+	W760-.
+/ State D: All characters in the string are digits. Clean the address
+/ from the stack and stack a 1. Exit.
+W76d,
+	W24CFA-.		/ DROP
+	W21CFA-.		/ 1
+	W8CFA-.		/ (BRANCH)
+	W76z-.
+/ State E: At least one character in teh string is not a digit. Clean
+/ the do loop off the return stack, the address from the math stack,
+/ and stack a 0. Exit.
+W76e,
+	W26CFA-.		/ <R
+	W24CFA-.		/ DROP
+	W26CFA-.		/ <R
+	W24CFA-.		/ DROP
+	W24CFA-.		/ DROP
+	W44CFA-.		/ 0
+/ *** EXIT ***
+W76z,
+	W5CFA-.		/ (;)
+
+
+/ ----	PROMPT -- word # 77
+
+W77Name,
+
+	/ stringengize( PROMPT )
+120
+122
+117
+115
+120
+124
+
+	.+0-W77Name
+	W77CFA-W76CFA
+W77CFA,
+	W11CFA-.		/ ($)
+W77PFA,
+/<\r\nOK\r\n>
+	W77End-W77Begin
+	W77Begin,
+
+	/ stringengize( \r\nOK\r\n )
+15
+12
+117
+113
+15
+12
+
+W77End,
+/ --	INTERPRET - The "outer text interpreter"
+/ 
+/ ( -> [varies] )
+/ 
+/ This is the user interface for the system. It prompts the user and
+/ accepts a line of input. The line of input is broken up into
+/ tokens. Each token is looked up in the dictionary; if it is found,
+/ the word is executed. If the token is not found, an attempt is made
+/ to convert the word to a number. If that works, the number is left
+/ on the stack and the whole shebang starts over.
+/ 
+/ Revisions:
+/ 
+/ 06/26/96 RLI - State E needs to drop the 0 returned by FIND if the
+/ 	word is not in the dictionary
+/ 07/23/96 RLI - Assumed string variables such as prompt execute
+/ 	as ( -> a c )
+
+
+/ ----	INTERPRET -- word # 78
+
+W78Name,
+
+	/ stringengize( INTERPRET )
+111
+116
+124
+105
+122
+120
+122
+105
+124
+
+	.+0-W78Name
+	W78CFA-W77CFA
+W78CFA,
+	W4CFA-.		/ (:)
+W78PFA,
+/ State A: Prompt the user and accept a command line. Go to state B.
+W78a,
+	W77CFA-.		/ PROMPT
+	W52CFA-.		/ TYPE
+	W61CFA-.		/ GETLINE
+/ State B: Get the next token. If there are no tokens left on the
+/ line, go to state H. Otherwise, go to state C.
+W78b,
+	W65CFA-.		/ TOKEN
+	W20CFA-.		/ DUP
+	W10CFA-.		/ (0BRANCH)
+	W78h-.
+/ State C: We have a token. Look it up in the dictionary. If the 
+/ lookup succeeded, go to state D. Otherwise, go to state E.
+W78c,
+	W71CFA-.		/ FIND
+	W20CFA-.		/ DUP
+	W10CFA-.		/ (0BRANCH)
+	W78e-.
+/ State D: There is a word by this name in the dictionary. Strip the
+/ token info from  the stack (we don't need it anymore since we've
+/ just figured out what to do about the token) and execute the word.
+/ Go back to state B.
+W78d,
+	W23CFA-.		/ SWAP
+	W24CFA-.		/ DROP
+	W23CFA-.		/ SWAP
+	W24CFA-.		/ DROP
+	W3CFA-.		/ EXEC
+	W8CFA-.		/ (BRANCH)
+	W78b-.
+/ State E: There is no word by this name in the dictionary. Is the
+/ word a number? If so, go to state F. Otherwise, go to state G.
+W78e,
+	W24CFA-.		/ DROP
+	W76CFA-.		/ ISNUMBER
+	W10CFA-.		/ (0BRANCH)
+	W78g-.
+/ State F: The word is a number. Convert it to a number and go to 
+/ state B.
+W78f,
+	W75CFA-.		/ >NYBBLES
+	W8CFA-.		/ (BRANCH)
+	W78b-.
+/ State G: The word is neither in the dictionary nor a number. It must
+/ be an error. Yell at the user and go back to state A.
+W78g,
+	W58CFA-.		/ NL
+	W52CFA-.		/ TYPE
+	W40CFA-.		/ (LIT)
+	77		/ 63
+	W47CFA-.		/ EMIT
+	W8CFA-.		/ (BRANCH)
+	W78a-.
+/ State H: We've found the end of the line. Drop the null token from
+/ the stack and go back to state A.
+W78h,
+	W24CFA-.		/ DROP
+	W24CFA-.		/ DROP
+	W8CFA-.		/ (BRANCH)
+	W78a-.
+/ This routine doesn't exit, but we need a ; to tell QDL to leave
+/ compile mode.
+	W5CFA-.		/ (;)
+/ ----
+/ 
+/ DO loop primitives
+/ 
+/ These words deal with executing a DO ... LOOP construct. They are
+/ required by other words in the vocabulary as well.
+/ 
+/ ----
+
+
+/ ----	(LOOP) -- word # 50
+
+W50Name,
+
+	/ stringengize( (LOOP) )
+50
+114
+117
+117
+120
+51
+
+	.+0-W50Name
+	W50CFA-W78CFA
+W50CFA,
+	W50CFA-.		/ (LOOP)
+W50PFA,
+/ (LOOP) - Add one to the index of a do loop.
+/ 
+/ M: ( -> )
+/ R: ( limit, index -> limit, index+1 ) if loop loops
+/    ( limit, index -> ) if loop exits
+/ 
+/ Assumes the return stack contains:
+/  (sp) = index
+/ 4(sp) = limit
+/ 
+/ This procedure adds one to the loop index and then decides whether
+/ the loop should be repeated or aborted. The loop is repeated if
+/ the incremented index is less than the limit.
+/ 
+/ The reference to (LOOP) is followed by a cell containing the relative
+/ offset to the top of the loop.
+/ 
+/ This code references a label in (BRANCH) called pBranch.
+/ 
+/ Revisions:
+/ 07/30/99 RLI - code version
+/ Update the index.
+	JMS I StupidFetchRP0		/ RP@
+	JMS I StupidFetch0		/ @
+	JMS I StupidLiteral1		/ 1
+	1
+	JMS I StupidPlus1			/ +
+	JMS I StupidFetchRP1		/ RP@
+	JMS I StupidStore1		/ !
+/ Fetch the limit and index
+	JMS I StupidFetchRP0		/ RP@
+	JMS I StupidFetch0		/ @
+	JMS I StupidLiteral1		/ 1
+	1
+	JMS I StupidFetchRP2		/ RP@
+	JMS I StupidPlus2			/ +
+	JMS I StupidFetch1		/ @
+/ If the index is less than the limit, go to pBranch.
+	JMS I StupidLessGo1		/ <GO pBranch
+	SL9
+/ The loop is exiting. We need to pop two cells (the limit and index)
+/ from the return stack.
+	JMS I StupidLiteral0		/ 1
+	1
+	JMS I StupidDup1			/ DUP
+	JMS I StupidPlus1			/ +
+	JMS I StupidFetchRP1		/ RP@
+	JMS I StupidPlus1			/ +
+	JMS I StupidStoreRP0		/ RP!
+/ We also have to skip the offset to the top of the loop, which 
+/ immediately follows the reference to (LOOP) in the FORTH code.
+/ To do this, we bump IP by a cell.
+	JMS I StupidFetchIP0		/ IP@
+	JMS I StupidLiteral1		/ 1
+	1
+	JMS I StupidPlus1			/ +
+	JMS I StupidStoreIP0		/ IP!
+	JMS I StupidFetchNEXT0		/ NEXT@
+	JMS I StupidStorePC0		/ PC!
+
+
+/ ----	(+LOOP) -- word # 79
+
+W79Name,
+
+	/ stringengize( (+LOOP) )
+50
+53
+114
+117
+117
+120
+51
+
+	.+0-W79Name
+	W79CFA-W50CFA
+W79CFA,
+	W79CFA-.		/ (+LOOP)
+W79PFA,
+/ (+LOOP) - Add a specified amount to the index of a do loop.
+/ 
+/ M: ( update -> )
+/ R: ( limit, index -> limit, index + update ) if the loop loops
+/ R: ( limit, index -> ) if the loop exits
+/ 
+/ Assumes the return stack contains:
+/  (sp) = index
+/ 4(sp) = limit
+/ 
+/ This procedure adds the value on top of the math stack to the loop
+/ index and then does the rest of (LOOP); it's like (LOOP) except you
+/ can specify an increment other than one.
+/ 
+/ The increment is discarded from the math stack.
+/ 
+/ Like (LOOP), (+LOOP) is followed by a cell  containing the relative
+/ offset to the top of the loop. Also like (LOOP), the branch is
+/ performed by entering (BRANCH) at pBranch.
+/ 
+/ Revisions:
+/ 07/30/99 RLI - code version.
+/ Update the index, which is on the top of the return stack.
+	JMS I StupidFetchRP0		/ RP@
+	JMS I StupidFetch0		/ @
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidFetch1		/ @
+	JMS I StupidPlus1			/ +
+	JMS I StupidFetchRP1		/ RP@
+	JMS I StupidStore1		/ !
+/ Drop the update value from the math stack.
+	JMS I StupidLiteral0		/ 1
+	1
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidSwap1		/ SWAP
+	JMS I StupidMinus1		/ -
+	JMS I StupidStoreMP0		/ MP!
+/ If the index is still less than the limit, branch to the top of
+/ the loop.
+	JMS I StupidFetchRP0		/ RP@
+	JMS I StupidFetch0		/ @
+	JMS I StupidLiteral1		/ 1
+	1
+	JMS I StupidFetchRP2		/ RP@
+	JMS I StupidPlus2			/ +
+	JMS I StupidFetch1		/ @
+	JMS I StupidLessGo1		/ <GO pBranch
+	SL9
+/ Otherwise, we need to exit the loop. Pop the limit and the index
+/ from the return stack.
+	JMS I StupidLiteral0		/ 1
+	1
+	JMS I StupidDup1			/ DUP
+	JMS I StupidPlus1			/ +
+	JMS I StupidFetchRP1		/ RP@
+	JMS I StupidPlus1			/ +
+	JMS I StupidStoreRP0		/ RP!
+/ We also need to skip the branch offset, which we are not using this
+/ time.
+	JMS I StupidFetchIP0		/ IP@
+	JMS I StupidLiteral1		/ 1
+	1
+	JMS I StupidPlus1			/ +
+	JMS I StupidStoreIP0		/ IP!
+	JMS I StupidFetchNEXT0		/ NEXT@
+	JMS I StupidStorePC0		/ PC!
+/ --	(DO) - Initialize a do loop
+/ 
+/ ( limit initial -- [pushed to return stack )
+/ 
+/ This procedure is the run-time initialization of a do loop; it takes
+/ the limit and initial value from the math stack and pushes them on
+/ the return stack in the order required by (LOOP) and (+LOOP).
+/ 
+/ Revisions:
+/ 
+/ 06/24/96 RLI - Oops! Before I can push things on the return stack,
+/ 	I need to make certain I understand what I'm doing with
+/ 	the return address! Sigh.
+
+
+/ ----	(DO) -- word # 49
+
+W49Name,
+
+	/ stringengize( (DO) )
+50
+104
+117
+51
+
+	.+0-W49Name
+	W49CFA-W79CFA
+W49CFA,
+	W4CFA-.		/ (:)
+W49PFA,
+	W23CFA-.		/ SWAP
+	W26CFA-.		/ <R
+	W23CFA-.		/ SWAP
+	W25CFA-.		/ >R
+	W23CFA-.		/ SWAP
+	W25CFA-.		/ >R
+	W25CFA-.		/ >R
+	W5CFA-.		/ (;)
+/ --	(DP@) - Fetch the initial value for the dictionary pointer
+/ 
+/ M: ( -> InitialDP )
+/ R: ( -> )
+/ 
+/ Revisions:
+
+
+/ ----	(DP@) -- word # 80
+
+W80Name,
+
+	/ stringengize( (DP@) )
+50
+104
+120
+100
+51
+
+	.+0-W80Name
+	W80CFA-W49CFA
+W80CFA,
+	W80CFA-.		/ (DP@)
+W80PFA,
+/ Make space on the math stack for InitialDP
+	JMS I StupidLiteral0		/ 1
+	1
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidPlus1			/ +
+	JMS I StupidStoreMP0		/ MP!
+/ Copy InitialDP into the space on the math stack
+	JMS I StupidFetchInitialDP0		/ InitialDP@
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidStore1		/ !
+	JMS I StupidFetchNEXT0		/ NEXT@
+	JMS I StupidStorePC0		/ PC!
+/ --	(LAST@) - Fetch the initial value for LAST
+/ 
+/ M: ( -> InitialLAST )
+/ R: ( -> )
+/ 
+/ Revisions:
+
+
+/ ----	(LAST@) -- word # 81
+
+W81Name,
+
+	/ stringengize( (LAST@) )
+50
+114
+101
+123
+124
+100
+51
+
+	.+0-W81Name
+	W81CFA-W80CFA
+W81CFA,
+	W81CFA-.		/ (LAST@)
+W81PFA,
+/ Make space on the math stack for InitialLAST
+	JMS I StupidLiteral0		/ 1
+	1
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidPlus1			/ +
+	JMS I StupidStoreMP0		/ MP!
+/ Copy InitialLAST into the space on the math stack
+	JMS I StupidFetchInitialLAST0		/ InitialLAST@
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidStore1		/ !
+	JMS I StupidFetchNEXT0		/ NEXT@
+	JMS I StupidStorePC0		/ PC!
+/ --	Messages to be displayed by IDENTIFY
+
+
+/ ----	IDMSG1 -- word # 82
+
+W82Name,
+
+	/ stringengize( IDMSG1 )
+111
+104
+115
+123
+107
+61
+
+	.+0-W82Name
+	W82CFA-W81CFA
+W82CFA,
+	W11CFA-.		/ ($)
+W82PFA,
+/<THIRD V0.0 CellSize >
+	W82End-W82Begin
+	W82Begin,
+
+	/ stringengize( THIRD V0.0 CellSize  )
+124
+110
+111
+122
+104
+40
+126
+60
+56
+60
+40
+103
+145
+154
+154
+123
+151
+172
+145
+40
+
+W82End,
+
+
+/ ----	IDMSG2 -- word # 83
+
+W83Name,
+
+	/ stringengize( IDMSG2 )
+111
+104
+115
+123
+107
+62
+
+	.+0-W83Name
+	W83CFA-W82CFA
+W83CFA,
+	W11CFA-.		/ ($)
+W83PFA,
+/<WordSize >
+	W83End-W83Begin
+	W83Begin,
+
+	/ stringengize( WordSize  )
+127
+157
+162
+144
+123
+151
+172
+145
+40
+
+W83End,
+
+
+/ ----	IDMSG3 -- word # 84
+
+W84Name,
+
+	/ stringengize( IDMSG3 )
+111
+104
+115
+123
+107
+63
+
+	.+0-W84Name
+	W84CFA-W83CFA
+W84CFA,
+	W11CFA-.		/ ($)
+W84PFA,
+/<Bits >
+	W84End-W84Begin
+	W84Begin,
+
+	/ stringengize( Bits  )
+102
+151
+164
+163
+40
+
+W84End,
+/ --	IDENTIFY - Display info about this system
+/ 
+/ 	( -- )
+/ 
+/ Revisions:
+
+
+/ ----	IDENTIFY -- word # 85
+
+W85Name,
+
+	/ stringengize( IDENTIFY )
+111
+104
+105
+116
+124
+111
+106
+131
+
+	.+0-W85Name
+	W85CFA-W84CFA
+W85CFA,
+	W4CFA-.		/ (:)
+W85PFA,
+	W82CFA-.		/ IDMSG1
+	W52CFA-.		/ TYPE
+	W40CFA-.		/ (LIT)
+	1		/ 1
+	W51CFA-.		/ .
+	W83CFA-.		/ IDMSG2
+	W52CFA-.		/ TYPE
+	W40CFA-.		/ (LIT)
+	1		/ 1
+	W51CFA-.		/ .
+	W84CFA-.		/ IDMSG3
+	W52CFA-.		/ TYPE
+	W40CFA-.		/ (LIT)
+	14		/ 12
+	W51CFA-.		/ .
+	W58CFA-.		/ NL
+	W5CFA-.		/ (;)
+/ --	(COLD) - Perform final power-on initialization
+/ 
+/ 	This word performs initialization that should be done once at
+/ power-on. It is assumed that the low-level initialization code
+/ has initialized the UART and the various low-level registers
+/ (NEXT, InitialRP, InitialMP, etc.) needed by the system. This
+/ word initializes the math and return stacks, identifies the
+/ system, and then does an ABORT.
+/ 
+/ Revisions:
+
+
+/ ----	(COLD) -- word # 1000
+
+W1000Name,
+
+	/ stringengize( (COLD) )
+50
+103
+117
+114
+104
+51
+
+	.+0-W1000Name
+	W1000CFA-W85CFA
+W1000CFA,
+	W4CFA-.		/ (:)
+W1000PFA,
+	W30CFA-.		/ MP!
+	W28CFA-.		/ RP!
+	W80CFA-.		/ (DP@)
+	W86CFA-.		/ DP
+	W16CFA-.		/ !
+	W81CFA-.		/ (LAST@)
+	W67CFA-.		/ LAST
+	W16CFA-.		/ !
+	W85CFA-.		/ IDENTIFY
+	W56CFA-.		/ ABORT
+	W5CFA-.		/ (;)
+/ -----
+/ 
+/ ABORT
+/ 
+/ -----
+
+
+/ ----	ABORT -- word # 56
+
+W56Name,
+
+	/ stringengize( ABORT )
+101
+102
+117
+122
+124
+
+	.+0-W56Name
+	W56CFA-W1000CFA
+W56CFA,
+	W4CFA-.		/ (:)
+W56PFA,
+	W30CFA-.		/ MP!
+	W28CFA-.		/ RP!
+	W78CFA-.		/ INTERPRET
+	W5CFA-.		/ (;)
+/ ----
+/ 
+/ Dictionary manipulation primitives
+/ 
+/ These words do the very basic work of adding things to the
+/ dictionary.
+/ 
+/ Revisions:	04/21/97 RLI - Changed flag byte to be a flag longword.
+/ 
+/ 		05/11/01 RLI - Fixed bogus blank line comments.
+/ 
+/ ----
+
+
+/ ----	DP -- word # 86
+
+W86Name,
+
+	/ stringengize( DP )
+104
+120
+
+	.+0-W86Name
+	W86CFA-W56CFA
+W86CFA,
+	W7CFA-.		/ (VAR)
+W86PFA,
+	0
+
+
+/ ----	(OLIT) -- word # 87
+
+W87Name,
+
+	/ stringengize( (OLIT) )
+50
+117
+114
+111
+124
+51
+
+	.+0-W87Name
+	W87CFA-W86CFA
+W87CFA,
+	W87CFA-.		/ (OLIT)
+W87PFA,
+/ (OLIT) - Extend and relocate a relative literal
+/ 
+/ M: ( -> literal )
+/ R: ( -> )
+/ 
+/ This word is used to create references to words in the code which, at
+/ execution, will result in the address of the word being pushed on the
+/ stack.
+/ 
+/ The reference to (OLIT) is followed by a relative offset that is
+/ relocated into the target address referenced by the offset and
+/ pushed on the stack.
+/ 
+/ Revisions:
+/ 07/29/99 RLI - code version
+/ Make space on the math stack for the literal
+	JMS I StupidLiteral0		/ 1
+	1
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidPlus1			/ +
+	JMS I StupidStoreMP0		/ MP!
+/ Fetch the offset and relocate it.
+	JMS I StupidFetchIP0		/ IP@
+	JMS I StupidFetch0		/ @
+	JMS I StupidFetchIP1		/ IP@
+	JMS I StupidPlus1			/ +
+/ Store the offset on the math stack
+	JMS I StupidFetchMP1		/ MP@
+	JMS I StupidStore1		/ !
+/ Advance IP over the literal and continue on.
+	JMS I StupidFetchIP0		/ IP@
+	JMS I StupidLiteral1		/ 1
+	1
+	JMS I StupidPlus1			/ +
+	JMS I StupidStoreIP0		/ IP!
+	JMS I StupidFetchNEXT0		/ NEXT@
+	JMS I StupidStorePC0		/ PC!
+/ --	O@ - Fetch the value of a relative offset
+/ 
+/ ( a -> b )
+/ 
+/ The word address by 'a' is fetched, sign-extended, and added
+/ to 'a'. This converts the word addressed by 'a' to the absolute
+/ address 'b'.
+/ 
+/ Revisions:
+/ 
+/ 06/28/96 RLI - Modified to use cell-sized offset.
+
+
+/ ----	O@ -- word # 88
+
+W88Name,
+
+	/ stringengize( O@ )
+117
+100
+
+	.+0-W88Name
+	W88CFA-W87CFA
+W88CFA,
+	W4CFA-.		/ (:)
+W88PFA,
+	W20CFA-.		/ DUP
+	W12CFA-.		/ @
+	W22CFA-.		/ +
+	W5CFA-.		/ (;)
+/ --	O! - Store a relative offset
+/ 
+/ 	( target address -> )
+/ 
+/ This word stores a 16-bit relative offset from address to target
+/ at address.
+/ 
+/ Revisions:
+/ 
+/ 06/28/96 RLI - Modified to use cell-size offset.
+
+
+/ ----	O! -- word # 89
+
+W89Name,
+
+	/ stringengize( O! )
+117
+41
+
+	.+0-W89Name
+	W89CFA-W88CFA
+W89CFA,
+	W4CFA-.		/ (:)
+W89PFA,
+	W23CFA-.		/ SWAP
+	W29CFA-.		/ OVER
+	W32CFA-.		/ -
+	W23CFA-.		/ SWAP
+	W16CFA-.		/ !
+	W5CFA-.		/ (;)
+/ --	B, - Append a byte to the dictionary
+/ 
+/ ( a -> )
+/ 
+/ a is stored in the first unused byte after the dictionary and
+/ the dictionary pointer is advanced to the next byte; this makes
+/ a the last byte in the dictionary.
+
+
+/ ----	B, -- word # 90
+
+W90Name,
+
+	/ stringengize( B, )
+102
+54
+
+	.+0-W90Name
+	W90CFA-W89CFA
+W90CFA,
+	W4CFA-.		/ (:)
+W90PFA,
+	W86CFA-.		/ DP
+	W12CFA-.		/ @
+	W17CFA-.		/ B!
+	W86CFA-.		/ DP
+	W19CFA-.		/ ++
+	W5CFA-.		/ (;)
+/ --	W, - Append a word to the dictionary
+/ 
+/ ( a -> )
+/ 
+/ a is stored in the first unused word after the dictionary and
+/ the dictionary pointer is advanced to the next word; this makes
+/ a the last word in the dictionary.
+
+
+/ ----	W, -- word # 91
+
+W91Name,
+
+	/ stringengize( W, )
+127
+54
+
+	.+0-W91Name
+	W91CFA-W90CFA
+W91CFA,
+	W4CFA-.		/ (:)
+W91PFA,
+	W86CFA-.		/ DP
+	W12CFA-.		/ @
+	W18CFA-.		/ W!
+	W86CFA-.		/ DP
+	W12CFA-.		/ @
+	W40CFA-.		/ (LIT)
+	1		/ 1
+	W22CFA-.		/ +
+	W86CFA-.		/ DP
+	W16CFA-.		/ !
+	W5CFA-.		/ (;)
+/ --	, - Append a longword to the dictionary
+/ 
+/ ( a -> )
+/ 
+/ a is stored in the first longword after the dictionary and
+/ the dictionary pointer is advanced to the next longword; this makes
+/ a the last longword in the dictionary
+
+
+/ ----	, -- word # 92
+
+W92Name,
+
+	/ stringengize( , )
+54
+
+	.+0-W92Name
+	W92CFA-W91CFA
+W92CFA,
+	W4CFA-.		/ (:)
+W92PFA,
+	W86CFA-.		/ DP
+	W12CFA-.		/ @
+	W16CFA-.		/ !
+	W86CFA-.		/ DP
+	W12CFA-.		/ @
+	W40CFA-.		/ (LIT)
+	1		/ 1
+	W22CFA-.		/ +
+	W86CFA-.		/ DP
+	W16CFA-.		/ !
+	W5CFA-.		/ (;)
+/ --	O, - Append a relative offset to the dictionary
+/ 
+/ 	( a -> )
+/ 
+/ The difference between the end of the dictionary and a is stored
+/ in the first unused longword after the dictionary. The dictionary
+/ pointer is advanced past this longword, making a-DP the last
+/ longword in the dictionary.
+
+
+/ ----	O, -- word # 93
+
+W93Name,
+
+	/ stringengize( O, )
+117
+54
+
+	.+0-W93Name
+	W93CFA-W92CFA
+W93CFA,
+	W4CFA-.		/ (:)
+W93PFA,
+	W86CFA-.		/ DP
+	W12CFA-.		/ @
+	W32CFA-.		/ -
+	W92CFA-.		/ ,
+	W5CFA-.		/ (;)
+/ --	$, - Append a counted string to the dictionary
+/ 
+/ ( addr count -> )
+/ 
+/ This word appends a counted string to the dictionary. Each byte
+/ of the string is appended to the dictionary using B,. After the
+/ string is copied, it is padded with nulls until the name ends on an
+/ even longword boundary. At that even longword boundary, the length byte
+/ for the name is appended; the rest of the word header consists of one byte
+/ for the link and a word for the CFA, so when the header is complete the
+/ definition of the word will be longword aligned.
+/ 
+/ NOTE: The caller is responsible for ensuring the string is not longer
+/ than 63 characters.
+/ 
+/ Revisions:
+/ 
+/ 07/08/96 RLI - The flags byte now requires a longword so that
+/ 	code remains longword aligned with longword offsets.
+
+
+/ ----	$, -- word # 94
+
+W94Name,
+
+	/ stringengize( $, )
+44
+54
+
+	.+0-W94Name
+	W94CFA-W93CFA
+W94CFA,
+	W4CFA-.		/ (:)
+W94PFA,
+/ *** ENTRY ***
+/ 
+/ M: Address of string, length of string
+/ R: Return address
+/ State A: Start up a do loop for the length of the string. Fetch the
+/ directory pointer so that we can use it at the end to calculate the
+/ length of the name. Go to state B.
+/  
+/ M: Original DP, address of string
+/ R: REturn address, lmit, index
+W94a,
+	W25CFA-.		/ >R
+	W86CFA-.		/ DP
+	W12CFA-.		/ @
+	W23CFA-.		/ SWAP
+	W26CFA-.		/ <R
+	W40CFA-.		/ (LIT)
+	0		/ 0
+	W49CFA-.		/ (DO)
+W940,
+/ State B: Append the next byte from the string to the dictionary and
+/ bump the pointer into the string. Loop until done.
+/ 
+/ M: Original DP, Address of byte after the end of the string
+/ R: Return address
+W94b,
+	W20CFA-.		/ DUP
+	W13CFA-.		/ B@
+	W90CFA-.		/ B,
+	W21CFA-.		/ 1
+	W22CFA-.		/ +
+	W50CFA-.		/ (LOOP)
+	W940-.
+/ State C: We're done fetching bytes from the string, so drop the pointer
+/ into the string from the stack. Get the current dictionary pointer so we
+/ can test to see if it's aligned. Go to state D.
+W94c,
+	W24CFA-.		/ DROP
+	W86CFA-.		/ DP
+	W12CFA-.		/ @
+/ State D: Test the low-order two bits of the dictionary pointer to see if
+/ we've longword aligned it. If so, go to state F. Otherwise, go to state
+/ E.
+/ 
+/ M: Original DP, Low-order two bits of DP
+W94d,
+	W20CFA-.		/ DUP
+	W40CFA-.		/ (LIT)
+	3		/ 3
+	W34CFA-.		/ AND
+	W10CFA-.		/ (0BRANCH)
+	W94f-.
+/ State E: DP is not yet longword alined. Append a null to the name and
+/ bump our copy of DP's low-order bits. Go to state D.
+/ 
+/ M: Original DP, (Low-order bits of DP) + 1
+W94e,
+	W44CFA-.		/ 0
+	W90CFA-.		/ B,
+	W21CFA-.		/ 1
+	W22CFA-.		/ +
+	W8CFA-.		/ (BRANCH)
+	W94d-.
+/ State F: We've longword aligned the dictionary. Drop the low-order two
+/ bits of DP since we don't need them anymore. Figure out how long the
+/ string is and deposit the length byte. Exit.
+/ 
+/ M:
+W94f,
+	W24CFA-.		/ DROP
+	W86CFA-.		/ DP
+	W12CFA-.		/ @
+	W23CFA-.		/ SWAP
+	W32CFA-.		/ -
+	W92CFA-.		/ ,
+/ *** EXIT ***
+/ 
+/ M:
+/ R:
+W94z,
+	W5CFA-.		/ (;)
+/ --	ALLOT - Allocate a chunk of memory into a word
+/ 
+/ ( bytes -> )
+/ 
+/ This word allocates a chunk of memory onto the end of the last
+/ word in the dictionary. It does this by simply advancing the
+/ dictionary pointer past the memory.
+
+
+/ ----	ALLOT -- word # 95
+
+W95Name,
+
+	/ stringengize( ALLOT )
+101
+114
+114
+117
+124
+
+	.+0-W95Name
+	W95CFA-W94CFA
+W95CFA,
+	W4CFA-.		/ (:)
+W95PFA,
+	W86CFA-.		/ DP
+	W12CFA-.		/ @
+	W22CFA-.		/ +
+	W86CFA-.		/ DP
+	W16CFA-.		/ !
+	W5CFA-.		/ (;)
+/ --	CREATE - Create a new word
+/ 
+/ ( -> )
+/ 
+/ This word appends the bulk of a header to the dictionary. It creates
+/ the name, flag, and link bytes and points LAST at the new header.
+/ When done, DP points at the CFA for the new word; the caller must
+/ fill in the CFA with a suitable O, before storing the definition of
+/ the word.
+/ 
+/ CREATE obtains the name of the word from the input buffer; it calls
+/ TOKEN to get the next word from the input buffer. If there are
+/ no tokens left in the input buffer, CREATE will display an error
+/ message and ABORT.
+/ 
+/ CREATE may also ABORT if the name is longer than 63 characters (the
+/ longest name that may be supported by the Flags byte).
+
+
+/ ----	CREATE -- word # 96
+
+W96Name,
+
+	/ stringengize( CREATE )
+103
+122
+105
+101
+124
+105
+
+	.+0-W96Name
+	W96CFA-W95CFA
+W96CFA,
+	W4CFA-.		/ (:)
+W96PFA,
+/ *** ENTRY ***
+/ 
+/ M:
+/ R: Return address
+/ State A: Grab the next token from the input buffer. If there is no next
+/ token (we're at the end of the line), go to state E. Otherwise, go to
+/ state B.
+/ 
+/ M: Address of token, length of token
+W96a,
+	W65CFA-.		/ TOKEN
+	W20CFA-.		/ DUP
+	W10CFA-.		/ (0BRANCH)
+	W96e-.
+/ State B: Make certain the name isn't too long. If the name is too
+/ long, go to state F. Otherwise, go to state C.
+/ 
+/ M: Address of token, length of token
+W96b,
+	W20CFA-.		/ DUP
+	W40CFA-.		/ (LIT)
+	100		/ 64
+	W41CFA-.		/ <
+	W10CFA-.		/ (0BRANCH)
+	W96f-.
+/ State C: We have a reasonable token. Toss it on the end of the dictionary.
+/ Compute and store the link field. Go to state G.
+/ 
+/ M:
+W96c,
+	W94CFA-.		/ $,
+	W86CFA-.		/ DP
+	W12CFA-.		/ @
+	W40CFA-.		/ (LIT)
+	1		/ 1
+	W22CFA-.		/ +
+	W67CFA-.		/ LAST
+	W12CFA-.		/ @
+	W32CFA-.		/ -
+	W92CFA-.		/ ,
+	W8CFA-.		/ (BRANCH)
+	W96g-.
+/ State D: (deleted)
+/ State E: There is no token on the line following the word which decided
+/ to create a new word. In other words, we don't have a name for the new
+/ word. Complain and ABORT.
+/ 
+/ M: Doesn't matter because we're ABORTing.
+W96e,
+	W97CFA-.		/ NAME?
+	W52CFA-.		/ TYPE
+	W56CFA-.		/ ABORT
+/ State F: The token is too long. Display an error message and ABORT.
+/ 
+/ M: Doesn't matter because we're ABORTing.
+W96f,
+	W98CFA-.		/ LEN?
+	W52CFA-.		/ TYPE
+	W56CFA-.		/ ABORT
+/ State G: The header is cool. Update LAST to point at the new header
+/ and exit.
+W96g,
+	W86CFA-.		/ DP
+	W12CFA-.		/ @
+	W67CFA-.		/ LAST
+	W16CFA-.		/ !
+/ **** EXIT ****
+/ 
+/ M:
+/ R:
+W96z,
+	W5CFA-.		/ (;)
+/ --	NAME? - This word contains an error message displayed by CREATE
+/ if there is no name for the new word in the input buffer.
+
+
+/ ----	NAME? -- word # 97
+
+W97Name,
+
+	/ stringengize( NAME? )
+116
+101
+115
+105
+77
+
+	.+0-W97Name
+	W97CFA-W96CFA
+W97CFA,
+	W11CFA-.		/ ($)
+W97PFA,
+/<\r\nName?\r\n>
+	W97End-W97Begin
+	W97Begin,
+
+	/ stringengize( \r\nName?\r\n )
+15
+12
+116
+141
+155
+145
+77
+15
+12
+
+W97End,
+/ --	LEN? - This word contains an error message displayed by CREATE
+/ if the name for the new word is too long.
+
+
+/ ----	LEN? -- word # 98
+
+W98Name,
+
+	/ stringengize( LEN? )
+114
+105
+116
+77
+
+	.+0-W98Name
+	W98CFA-W97CFA
+W98CFA,
+	W11CFA-.		/ ($)
+W98PFA,
+/<\r\nLen?\r\n>
+	W98End-W98Begin
+	W98Begin,
+
+	/ stringengize( \r\nLen?\r\n )
+15
+12
+114
+145
+156
+77
+15
+12
+
+W98End,
+/ --	VARIABLE - Create a variable
+/ 
+/ 	( a -> )
+/ 
+/ This word creates a variable with a specified name. The value on
+/ top of the math stack is stored in the variable after the header
+/ is created. The name of the variable is taken from the input buffer;
+/ i.e., it's the word of input following VARIABLE.
+
+
+/ ----	VARIABLE -- word # 99
+
+W99Name,
+
+	/ stringengize( VARIABLE )
+126
+101
+122
+111
+101
+102
+114
+105
+
+	.+0-W99Name
+	W99CFA-W98CFA
+W99CFA,
+	W4CFA-.		/ (:)
+W99PFA,
+/ First, create the header
+	W96CFA-.		/ CREATE
+/ Point the CFA at (VAR)
+	W87CFA-.		/ (OLIT)
+	W7CFA-.		/ (VAR)
+	W93CFA-.		/ O,
+/ Store the value into the new variable
+	W92CFA-.		/ ,
+	W5CFA-.		/ (;)
+/ --	CONSTANT - Create a constant
+/ 
+/ 	( a -> )
+/ 
+/ This word creates a constant with a specified name. The value on
+/ top of the math stack is stored in the constant after the header
+/ is created. The name of the constant is taken from the input buffer;
+/ i.e., it's the word of input following CONSTANT.
+
+
+/ ----	CONSTANT -- word # 100
+
+W100Name,
+
+	/ stringengize( CONSTANT )
+103
+117
+116
+123
+124
+101
+116
+124
+
+	.+0-W100Name
+	W100CFA-W99CFA
+W100CFA,
+	W4CFA-.		/ (:)
+W100PFA,
+/ First, create the header
+	W96CFA-.		/ CREATE
+/ Point the CFA at (CONSTANT)
+	W87CFA-.		/ (OLIT)
+	W6CFA-.		/ (CONSTANT)
+	W93CFA-.		/ O,
+/ Store the value into the new variable
+	W92CFA-.		/ ,
+	W5CFA-.		/ (;)
+/ --	CODE - Create a machine code word
+/ 
+/ ( -> )
+/ 
+/ This word creates a word containing machine code. It creates a
+/ header whose CFA points to the word's definition; i.e., it
+/ creates a header for which the word itself contains the machine
+/ code which knows how to execute the word. The code executed by
+/ the word must be appended to the header using the various ',' words.
+/ 
+/ The name of the new word is taken from the input buffer; i.e., it
+/ follows CODE on the input line.
+/ 
+/ Revisions:
+/ 	08/09/96 RLI - Removed assumption that CFA is a relative offset.
+/ 08/27/96 RLI - Fixed the 08/09 fix.
+
+
+/ ----	CODE -- word # 101
+
+W101Name,
+
+	/ stringengize( CODE )
+103
+117
+104
+105
+
+	.+0-W101Name
+	W101CFA-W100CFA
+W101CFA,
+	W4CFA-.		/ (:)
+W101PFA,
+	W96CFA-.		/ CREATE
+	W86CFA-.		/ DP
+	W12CFA-.		/ @
+	W93CFA-.		/ O,
+	W5CFA-.		/ (;)
+/ --	$ - Compile a string into a word
+/ 
+/ ( -> )
+/ 
+/ This word compiles a string into a word. The token following $ on
+/ the input line is used as the name of the word. The rest of the
+/ input line is copied into the dictionary following the header and
+/ string length byte.
+
+
+/ ----	$ -- word # 102
+
+W102Name,
+
+	/ stringengize( $ )
+44
+
+	.+0-W102Name
+	W102CFA-W101CFA
+W102CFA,
+	W4CFA-.		/ (:)
+W102PFA,
+/ Create the word and point its CFA at ($)
+	W96CFA-.		/ CREATE
+	W87CFA-.		/ (OLIT)
+	W11CFA-.		/ ($)
+	W93CFA-.		/ O,
+/ Calculate the length of the remaining line. This is given by 
+/ searching for the null terminating the input buffer.
+	W59CFA-.		/ INBUF
+	W60CFA-.		/ IN
+	W12CFA-.		/ @
+	W22CFA-.		/ +
+	W44CFA-.		/ 0
+/ Examine the character. If it's a null, we're done. Otherwise,
+/ we need to bump the address and look at the next character.
+W102a,
+	W64CFA-.		/ NEXTCHAR
+	W10CFA-.		/ (0BRANCH)
+	W102b-.
+/ The character is not null. Count it and repeat.
+	W21CFA-.		/ 1
+	W22CFA-.		/ +
+	W8CFA-.		/ (BRANCH)
+	W102a-.
+/ The character is a null; we've found the string length. Append
+/ the string length to the dictionary followed by the string.
+W102b,
+	W20CFA-.		/ DUP
+	W90CFA-.		/ B,
+	W94CFA-.		/ $,
+/ Note that we'll have a couple of extra bytes at the end (padding
+/ to longword boundary followed by a flag byte, but that's OK.
+	W5CFA-.		/ (;)
+/ ----
+/ 
+/ : and support for :
+/ 
+/ ----
+
+
+/ ----	:DONE -- word # 103
+
+W103Name,
+
+	/ stringengize( :DONE )
+72
+104
+117
+116
+105
+
+	.+0-W103Name
+	W103CFA-W102CFA
+W103CFA,
+	W7CFA-.		/ (VAR)
+W103PFA,
+	0
+
+
+/ ----	:DP -- word # 104
+
+W104Name,
+
+	/ stringengize( :DP )
+72
+104
+120
+
+	.+0-W104Name
+	W104CFA-W103CFA
+W104CFA,
+	W7CFA-.		/ (VAR)
+W104PFA,
+	0
+
+
+/ ----	:LAST -- word # 105
+
+W105Name,
+
+	/ stringengize( :LAST )
+72
+114
+101
+123
+124
+
+	.+0-W105Name
+	W105CFA-W104CFA
+W105CFA,
+	W7CFA-.		/ (VAR)
+W105PFA,
+	0
+
+
+/ ----	:MP -- word # 106
+
+W106Name,
+
+	/ stringengize( :MP )
+72
+115
+120
+
+	.+0-W106Name
+	W106CFA-W105CFA
+W106CFA,
+	W7CFA-.		/ (VAR)
+W106PFA,
+	0
+/ --	; - Terminat a : definition
+/ 
+/ ( -> )
+/ 
+/ This word compiles (;) into the dictionary then sets :DONE to
+/ a non-zero value so : knows to exit.
+
+
+/ ----	; -- word # 107
+
+W107Name,
+
+	/ stringengize( ; )
+73
+
+	.+200-W107Name
+	W107CFA-W106CFA
+W107CFA,
+	W4CFA-.		/ (:)
+W107PFA,
+	W87CFA-.		/ (OLIT)
+	W5CFA-.		/ (;)
+	W93CFA-.		/ O,
+	W21CFA-.		/ 1
+	W103CFA-.		/ :DONE
+	W16CFA-.		/ !
+	W5CFA-.		/ (;)
+/ --	:ABORT - Abort a : definition
+/ 
+/ ( -> )
+/ 
+/ This word is used to abort while compiling a : definition. It
+/ restores DP and LAST to their original values before ABORTing.
+
+
+/ ----	:ABORT -- word # 108
+
+W108Name,
+
+	/ stringengize( :ABORT )
+72
+101
+102
+117
+122
+124
+
+	.+0-W108Name
+	W108CFA-W107CFA
+W108CFA,
+	W4CFA-.		/ (:)
+W108PFA,
+	W104CFA-.		/ :DP
+	W12CFA-.		/ @
+	W86CFA-.		/ DP
+	W16CFA-.		/ !
+	W105CFA-.		/ :LAST
+	W12CFA-.		/ @
+	W67CFA-.		/ LAST
+	W16CFA-.		/ !
+	W56CFA-.		/ ABORT
+	W5CFA-.		/ (;)
+/ --	: - Compile a FORTH word into the dictionary
+/ 
+/ ( -> )
+/ 
+/ This word adds a new executable FORTH word to the dictionary; it is
+/ remarkably similar to INTERPRET, with a few exceptions:
+/ 
+/ 	- Non-immedate words are compiled into the dictionary
+/ 	  instead of being executed
+/ 
+/ 	- Literals are compiled into the dictionary instead
+/ 	  of being left on the math stack.
+
+
+/ ----	: -- word # 109
+
+W109Name,
+
+	/ stringengize( : )
+72
+
+	.+0-W109Name
+	W109CFA-W108CFA
+W109CFA,
+	W4CFA-.		/ (:)
+W109PFA,
+/ *** ENTRY ***
+/ 
+/ M:
+/ R: Return address
+/ State A: Initialize :DP and :LAST so we can undo the changes we make 
+/ to the dictionary if necessary. Initialize :DONE so we'll keep fetching
+/ lines until ; is executed. Initialize :MP so we can do a smidgen of
+/ error checking at ; time. Create the name and compile its CFA to point
+/ at (:). Go to state B.
+/ 
+/ M:
+W109a,
+	W44CFA-.		/ 0
+	W103CFA-.		/ :DONE
+	W16CFA-.		/ !
+	W86CFA-.		/ DP
+	W12CFA-.		/ @
+	W104CFA-.		/ :DP
+	W16CFA-.		/ !
+	W67CFA-.		/ LAST
+	W12CFA-.		/ @
+	W105CFA-.		/ :LAST
+	W16CFA-.		/ !
+	W31CFA-.		/ MP@
+	W106CFA-.		/ :MP
+	W16CFA-.		/ !
+	W96CFA-.		/ CREATE
+	W87CFA-.		/ (OLIT)
+	W4CFA-.		/ (:)
+	W93CFA-.		/ O,
+/ State B: Fetch the next token from the input buffer buffer. If there is
+/ no next token, go to state H. Otheriwse, go to state C. 
+/ 
+/ Note that since we may have executed an immediate word, the math stack
+/ depth is indeterminate starting here.
+/ 
+/ M: ?, Token address, Token length
+W109b,
+	W65CFA-.		/ TOKEN
+	W20CFA-.		/ DUP
+	W10CFA-.		/ (0BRANCH)
+	W109h-.
+/ State C: We have a token. Look it up in the dictionary. If it's not
+/ there, go to state I. Otherwise, go to state D.
+/ 
+/ M: ?, Token address, Token count, CFA of word named by Token
+W109c,
+	W71CFA-.		/ FIND
+	W20CFA-.		/ DUP
+	W10CFA-.		/ (0BRANCH)
+	W109i-.
+/ State D: We've found the word, so we can toss the token address and
+/ byte count. Fetch the flag byte and see if it's an immediate word.
+/ If it's an immediate word, go to state E. Otherwise, go to state L.
+/ 
+/ M: ?, CFA
+W109d,
+	W23CFA-.		/ SWAP
+	W24CFA-.		/ DROP
+	W23CFA-.		/ SWAP
+	W24CFA-.		/ DROP
+	W20CFA-.		/ DUP
+	W40CFA-.		/ (LIT)
+	37777777776		/ -2
+	W22CFA-.		/ +
+	W12CFA-.		/ @
+	W40CFA-.		/ (LIT)
+	200		/ 128
+	W34CFA-.		/ AND
+	W10CFA-.		/ (0BRANCH)
+	W109l-.
+/ State E: We have an immediate word. Execute the word and look to 
+/ see if we're done compiling. If we are done compiling, go to state F.
+/ Otherwise, go to state B.
+/ 
+/ M: ?
+W109e,
+	W3CFA-.		/ EXEC
+	W103CFA-.		/ :DONE
+	W12CFA-.		/ @
+	W10CFA-.		/ (0BRANCH)
+	W109b-.
+/ State F: We're done compiling. We need to make certain everything the
+/ immediate words left on the math stack has been popped off. Fetch the
+/ math stack pointer and compare it to the math stack pointer we had
+/ on entry. If they match, we don't have any leftover boogers on the
+/ math stack; exit. Otherwise, go to state G.
+/ 
+/ M:		( if we exit )
+/ M: ?		( if we go to state G)
+W109f,
+	W31CFA-.		/ MP@
+	W106CFA-.		/ :MP
+	W12CFA-.		/ @
+	W32CFA-.		/ -
+	W10CFA-.		/ (0BRANCH)
+	W109z-.
+/ State G: Argh! We've boogerd up the math stack and not wiped it off.
+/ Display an error message and :ABORT.
+/ 
+/ M: Doesn't matter since we're :ABORTing.
+W109g,
+	W87CFA-.		/ (OLIT)
+	W109CFA-.		/ :
+	W68CFA-.		/ ID>$
+	W52CFA-.		/ TYPE
+	W110CFA-.		/ NEST?
+	W52CFA-.		/ TYPE
+	W108CFA-.		/ :ABORT
+/ State H: We've hit the end of the line before encountering ;. Clean the
+/ token info off the math stack and get another line of input. Go back
+/ to state B.
+/ 
+/ M: ?
+W109h,
+	W24CFA-.		/ DROP
+	W24CFA-.		/ DROP
+	W61CFA-.		/ GETLINE
+	W8CFA-.		/ (BRANCH)
+	W109b-.
+/ State I: We could not find the token in the dictionary. This may
+/ be a number. If so, go to state J. Otherwise, go to state K.
+/ 
+/ M: ?, Token address, Token count
+W109i,
+	W24CFA-.		/ DROP
+	W76CFA-.		/ ISNUMBER
+	W10CFA-.		/ (0BRANCH)
+	W109k-.
+/ State J: We have a literal. Convert it to binary and compile it into the
+/ dictionary. Go to state B.
+W109j,
+	W75CFA-.		/ >NYBBLES
+	W87CFA-.		/ (OLIT)
+	W40CFA-.		/ (LIT)
+	W93CFA-.		/ O,
+	W92CFA-.		/ ,
+	W8CFA-.		/ (BRANCH)
+	W109b-.
+/ State K: Our token is bogus; it isn't a number and it isn't in the 
+/ dictionary. Display tthe token so the user knows why were :ABORTing
+/ then :ABORT.
+/ 
+/ M: Doesn't matter since we're :ABORTing.
+W109k,
+	W52CFA-.		/ TYPE
+	W40CFA-.		/ (LIT)
+	77		/ 63
+	W47CFA-.		/ EMIT
+	W108CFA-.		/ :ABORT
+/ State L: We've found the token in the dictionary and it is not an
+/ immediate word. Compile a reference to the word into the dictionary
+/ and go to state B.
+/ 
+/ M: ?
+W109l,
+	W93CFA-.		/ O,
+	W8CFA-.		/ (BRANCH)
+	W109b-.
+/ *** EXIT ***
+/ 
+/ M:
+/ R:
+W109z,
+	W5CFA-.		/ (;)
+/ --	NEST? - This word contains the error message displayed by :
+/ when it believes the control structure nesting is bad. It may
+/ also be displayed by other control structure words.
+
+
+/ ----	NEST? -- word # 110
+
+W110Name,
+
+	/ stringengize( NEST? )
+116
+105
+123
+124
+77
+
+	.+0-W110Name
+	W110CFA-W109CFA
+W110CFA,
+	W11CFA-.		/ ($)
+W110PFA,
+/< Nest?\r\n>
+	W110End-W110Begin
+	W110Begin,
+
+	/ stringengize(  Nest?\r\n )
+40
+116
+145
+163
+164
+77
+15
+12
+
+W110End,
+/ --	IMMEDIATE - Flags the last word in the dictionary as immediate.
+/ 
+/ ( -> )
+/ 
+/ This word sets the IMMEDIATE bit in the flags byte of the
+/ word pointed to by LAST.
+
+
+/ ----	IMMEDIATE -- word # 111
+
+W111Name,
+
+	/ stringengize( IMMEDIATE )
+111
+115
+115
+105
+104
+111
+101
+124
+105
+
+	.+0-W111Name
+	W111CFA-W110CFA
+W111CFA,
+	W4CFA-.		/ (:)
+W111PFA,
+	W67CFA-.		/ LAST
+	W12CFA-.		/ @
+	W40CFA-.		/ (LIT)
+	37777777776		/ -2
+	W22CFA-.		/ +
+	W20CFA-.		/ DUP
+	W12CFA-.		/ @
+	W40CFA-.		/ (LIT)
+	200		/ 128
+	W35CFA-.		/ OR
+	W23CFA-.		/ SWAP
+	W17CFA-.		/ B!
+	W5CFA-.		/ (;)
+/ ----
+/ 
+/ DO loops
+/ 
+/ ----
+/ --	DO - Compile the top of a do loop
+/ 
+/ ( -> Top of loop, 1 )
+/ 
+/ This word compiles a (DO) into the dictionary and then leaves a
+/ booger the math stack containing the address of the byte after
+/ (DO) to allow LOOP and +LOOP to find the top of the loop.
+
+
+/ ----	DO -- word # 112
+
+W112Name,
+
+	/ stringengize( DO )
+104
+117
+
+	.+200-W112Name
+	W112CFA-W111CFA
+W112CFA,
+	W4CFA-.		/ (:)
+W112PFA,
+	W87CFA-.		/ (OLIT)
+	W49CFA-.		/ (DO)
+	W93CFA-.		/ O,
+	W86CFA-.		/ DP
+	W12CFA-.		/ @
+	W21CFA-.		/ 1
+	W5CFA-.		/ (;)
+/ --	LOOP - Compile the bottom of a do loop
+/ 
+/ ( Address of top of loop, Booger type -> )
+/ 
+/ This word coppiles a (LOOP) into the dictionary followed by the
+/ offset to the top of the do loop. The top of the do loop is left
+/ as a booger on the math stack by DO.
+/ 
+/ The booger is check to ensure that it's a DO-booger. If the top
+/ of the math stack is not a DO-booger, "Nest?" is printed and
+/ compilation is :ABORTed.
+
+
+/ ----	LOOP -- word # 113
+
+W113Name,
+
+	/ stringengize( LOOP )
+114
+117
+117
+120
+
+	.+200-W113Name
+	W113CFA-W112CFA
+W113CFA,
+	W4CFA-.		/ (:)
+W113PFA,
+	W87CFA-.		/ (OLIT)
+	W50CFA-.		/ (LOOP)
+	W93CFA-.		/ O,
+	W21CFA-.		/ 1
+	W32CFA-.		/ -
+	W10CFA-.		/ (0BRANCH)
+	W1130-.
+	W87CFA-.		/ (OLIT)
+	W113CFA-.		/ LOOP
+	W68CFA-.		/ ID>$
+	W52CFA-.		/ TYPE
+	W110CFA-.		/ NEST?
+	W52CFA-.		/ TYPE
+	W108CFA-.		/ :ABORT
+	W8CFA-.		/ (BRANCH)
+	W1131-.
+W1130,
+	W93CFA-.		/ O,
+W1131,
+	W5CFA-.		/ (;)
+/ --	+LOOP - Compile the bottom of a do loop
+/ 
+/ ( Address of top of loop, Booger type -> )
+/ 
+/ This word coppiles a (+LOOP) into the dictionary followed by the
+/ offset to the top of the do loop. The top of the do loop is left
+/ as a booger on the math stack by DO.
+/ 
+/ The booger is check to ensure that it's a DO-booger. If the top
+/ of the math stack is not a DO-booger, "Nest?" is printed and
+/ compilation is :ABORTed.
+
+
+/ ----	+LOOP -- word # 114
+
+W114Name,
+
+	/ stringengize( +LOOP )
+53
+114
+117
+117
+120
+
+	.+200-W114Name
+	W114CFA-W113CFA
+W114CFA,
+	W4CFA-.		/ (:)
+W114PFA,
+	W87CFA-.		/ (OLIT)
+	W79CFA-.		/ (+LOOP)
+	W93CFA-.		/ O,
+	W21CFA-.		/ 1
+	W32CFA-.		/ -
+	W10CFA-.		/ (0BRANCH)
+	W1140-.
+	W87CFA-.		/ (OLIT)
+	W114CFA-.		/ +LOOP
+	W68CFA-.		/ ID>$
+	W52CFA-.		/ TYPE
+	W110CFA-.		/ NEST?
+	W52CFA-.		/ TYPE
+	W108CFA-.		/ :ABORT
+	W8CFA-.		/ (BRANCH)
+	W1141-.
+W1140,
+	W93CFA-.		/ O,
+W1141,
+	W5CFA-.		/ (;)
+/ ----
+/ 
+/     REPEAT loops
+/ 
+/ ----
+/ --	REPEAT - Compile the top of a REPEAT/UNTIL loop.
+/ 
+/ ( -> Address of the top of the loop, 2 )
+/ 
+/ This word puts a REPEAT-booger on the math stack for later
+/ reference by UNTIL. The REPEAT-booger contains the 
+/ dictionary pointer when REPEAT was executed; i.e., it contains
+/ the address of the top of the loop.
+
+
+/ ----	REPEAT -- word # 115
+
+W115Name,
+
+	/ stringengize( REPEAT )
+122
+105
+120
+105
+101
+124
+
+	.+200-W115Name
+	W115CFA-W114CFA
+W115CFA,
+	W4CFA-.		/ (:)
+W115PFA,
+	W86CFA-.		/ DP
+	W12CFA-.		/ @
+	W40CFA-.		/ (LIT)
+	2		/ 2
+	W5CFA-.		/ (;)
+/ --	UNTIL - Compile to bottom of a REPEAT/UNTIL loop.
+/ 
+/ ( Address of top loop, type of booger -> )
+/ 
+/ This word compiles a (0BRANCH) at the end of the loop which
+/ will branch back to the top of the loop. Thus, the loop is
+/ repeated until the top of the math stack at the bottom of
+/ the loop is non-zero.
+
+
+/ ----	UNTIL -- word # 116
+
+W116Name,
+
+	/ stringengize( UNTIL )
+125
+116
+124
+111
+114
+
+	.+200-W116Name
+	W116CFA-W115CFA
+W116CFA,
+	W4CFA-.		/ (:)
+W116PFA,
+	W87CFA-.		/ (OLIT)
+	W10CFA-.		/ (0BRANCH)
+	W93CFA-.		/ O,
+	W40CFA-.		/ (LIT)
+	2		/ 2
+	W32CFA-.		/ -
+	W10CFA-.		/ (0BRANCH)
+	W1160-.
+	W87CFA-.		/ (OLIT)
+	W116CFA-.		/ UNTIL
+	W68CFA-.		/ ID>$
+	W52CFA-.		/ TYPE
+	W110CFA-.		/ NEST?
+	W52CFA-.		/ TYPE
+	W108CFA-.		/ :ABORT
+	W8CFA-.		/ (BRANCH)
+	W1161-.
+W1160,
+	W93CFA-.		/ O,
+W1161,
+	W5CFA-.		/ (;)
+/ ----
+/ 
+/ IF
+/ 
+/ ----
+/ --	IF - Compile a conditional branch
+/ 
+/ ( -> Address of offset in conditional branch, 3 )
+/ 
+/  This word compiles a (0BRANCH) into the code, leaving space
+/ for the offset of the branch following it. The offset will be
+/ filled in later by either ELSE or ENDIF. Since ELSE or ENDIF
+/ need to know where the offset should be stored, the address of
+/ the offset is left on the math stack as an IF-booger.
+
+
+/ ----	IF -- word # 117
+
+W117Name,
+
+	/ stringengize( IF )
+111
+106
+
+	.+200-W117Name
+	W117CFA-W116CFA
+W117CFA,
+	W4CFA-.		/ (:)
+W117PFA,
+	W87CFA-.		/ (OLIT)
+	W10CFA-.		/ (0BRANCH)
+	W93CFA-.		/ O,
+	W86CFA-.		/ DP
+	W12CFA-.		/ @
+	W20CFA-.		/ DUP
+	W93CFA-.		/ O,
+	W40CFA-.		/ (LIT)
+	3		/ 3
+	W5CFA-.		/ (;)
+/ --	ELSE - Compile the false branch of an IF
+/ 
+/ ( Address of IF branch, type of booger -> Address of ELSE branch, 3 )
+/ 
+/ This word terminates the true branch of an IF and starts the false
+/ branch.
+/ 
+/ An unconditional branch is compiled following the true section.
+/ This will be filled in later by ENDIF. The booger left behind by IF
+/ is then filled in to point to the start of the false code. The
+/ IF-booger left by IF is replaced by an IF-booger for the branch
+/ at the end of the true section.
+
+
+/ ----	ELSE -- word # 118
+
+W118Name,
+
+	/ stringengize( ELSE )
+105
+114
+123
+105
+
+	.+200-W118Name
+	W118CFA-W117CFA
+W118CFA,
+	W4CFA-.		/ (:)
+W118PFA,
+	W87CFA-.		/ (OLIT)
+	W8CFA-.		/ (BRANCH)
+	W93CFA-.		/ O,
+/ Now we need to be a bit careful. We have to stash away the address
+/ of teh offset portion of the branch we just compiled before we
+/ can fill in the IF-booger left behind by IF (we want the original
+/ IF-boogerto branch _after_ the relative offset, not to it).
+/ 
+/ However, we also don't want to put dependencies in this code
+/ about the size of a relative offset. So what we're going to do
+/ is fetch DP and stash it on the return stack while we fill in the
+/ original IF-booger. Then we can use the return stack to generate
+/ the new IF-booger.
+	W86CFA-.		/ DP
+	W12CFA-.		/ @
+	W20CFA-.		/ DUP
+	W25CFA-.		/ >R
+	W93CFA-.		/ O,
+	W119CFA-.		/ ENDIF
+	W26CFA-.		/ <R
+	W40CFA-.		/ (LIT)
+	3		/ 3
+	W5CFA-.		/ (;)
+/ --	ENDIF - Complete the compilation of an IF construct
+/ 
+/ ( Address of branch offset to be filled in, type of booger -> )
+/ 
+/ This word fills in the open branch offset left behind by an
+/ IF or an ELSE. The offset from the original branch is written to
+/ point to the current DP, which is just past the end of the IF.
+
+
+/ ----	ENDIF -- word # 119
+
+W119Name,
+
+	/ stringengize( ENDIF )
+105
+116
+104
+111
+106
+
+	.+200-W119Name
+	W119CFA-W118CFA
+W119CFA,
+	W4CFA-.		/ (:)
+W119PFA,
+	W40CFA-.		/ (LIT)
+	3		/ 3
+	W32CFA-.		/ -
+	W10CFA-.		/ (0BRANCH)
+	W1190-.
+	W87CFA-.		/ (OLIT)
+	W117CFA-.		/ IF
+	W68CFA-.		/ ID>$
+	W52CFA-.		/ TYPE
+	W110CFA-.		/ NEST?
+	W52CFA-.		/ TYPE
+	W108CFA-.		/ :ABORT
+	W8CFA-.		/ (BRANCH)
+	W1191-.
+W1190,
+	W86CFA-.		/ DP
+	W12CFA-.		/ @
+	W23CFA-.		/ SWAP
+	W89CFA-.		/ O!
+W1191,
+	W5CFA-.		/ (;)
+/ 	?EMIT             M: ( -> Flag )
+/ 	                  R: ( -> )
+/ 
+/ 	If the console is ready to accept a character, a non-zero flag
+/ 	is pushed onto the math stack. Otherwise, a zero flag is pushed.
+/ 	The work is actually done by machine code at label MSQE.
+
+
+/ ----	?EMIT -- word # 120
+
+W120Name,
+
+	/ stringengize( ?EMIT )
+77
+105
+115
+111
+124
+
+	.+0-W120Name
+	W120CFA-W119CFA
+W120CFA,
+	W120CFA-.		/ ?EMIT
+W120PFA,
+	JMS I StupidLiteral0		/ MSQE
+	MSQE
+	JMS I StupidStorePC0		/ PC!
+/ 	(EMIT)              M: ( Character -> )
+/ 	                    R: ( -> )
+/ 
+/ 	Displays the character from the top of the math stack on the
+/ 	console. The character is dropped. The console is assumed to
+/ 	be ready to print. Handled by machine code at label MSE.
+
+
+/ ----	(EMIT) -- word # 121
+
+W121Name,
+
+	/ stringengize( (EMIT) )
+50
+105
+115
+111
+124
+51
+
+	.+0-W121Name
+	W121CFA-W120CFA
+W121CFA,
+	W121CFA-.		/ (EMIT)
+W121PFA,
+	JMS I StupidLiteral0		/ MSE
+	MSE
+	JMS I StupidStorePC0		/ PC!
+/ 	EMIT                M: ( Character -> )
+/ 	                    R: ( -> )
+/ 
+/ 	Waits for the console to become ready then displays the character
+/ at the top of the math stack.
+
+
+/ ----	EMIT -- word # 47
+
+W47Name,
+
+	/ stringengize( EMIT )
+105
+115
+111
+124
+
+	.+0-W47Name
+	W47CFA-W121CFA
+W47CFA,
+	W4CFA-.		/ (:)
+W47PFA,
+W470,
+	W120CFA-.		/ ?EMIT
+	W10CFA-.		/ (0BRANCH)
+	W470-.
+	W121CFA-.		/ (EMIT)
+	W5CFA-.		/ (;)
+/ 	?KEY              M: ( -> Flag )
+/ 	                  R: ( -> )
+/ 
+/ 	If the console has received a character, a non-zero flag is
+/ 	pushed onto the math sack. Otherwise, a zero flag is pushed.
+/ 	The work is actually done by machine code at label MSQK.
+
+
+/ ----	?KEY -- word # 55
+
+W55Name,
+
+	/ stringengize( ?KEY )
+77
+113
+105
+131
+
+	.+0-W55Name
+	W55CFA-W47CFA
+W55CFA,
+	W55CFA-.		/ ?KEY
+W55PFA,
+	JMS I StupidLiteral0		/ MSQK
+	MSQK
+	JMS I StupidStorePC0		/ PC!
+/ (KEY)               M: ( -> Character )
+/ 
+/ 	Reads a character from the console and pushes it onto the
+/ 	math stack. It is assumed the console is ready to supply a
+/ 	character. Handled by machine code at label MSK.
+
+
+/ ----	(KEY) -- word # 122
+
+W122Name,
+
+	/ stringengize( (KEY) )
+50
+113
+105
+131
+51
+
+	.+0-W122Name
+	W122CFA-W55CFA
+W122CFA,
+	W122CFA-.		/ (KEY)
+W122PFA,
+	JMS I StupidLiteral0		/ MSK
+	MSK
+	JMS I StupidStorePC0		/ PC!
+/ 	KEY                 M: ( -> Character )
+/ 	                    R: ( -> )
+/ 
+/ 	Waits for a character to become available at the console and
+/ 	then fetches it.
+
+
+/ ----	KEY -- word # 62
+
+W62Name,
+
+	/ stringengize( KEY )
+113
+105
+131
+
+	.+0-W62Name
+	W62CFA-W122CFA
+W62CFA,
+	W4CFA-.		/ (:)
+W62PFA,
+W620,
+	W55CFA-.		/ ?KEY
+	W10CFA-.		/ (0BRANCH)
+	W620-.
+	W122CFA-.		/ (KEY)
+	W40CFA-.		/ (LIT)
+	177		/ 0X7F
+	W34CFA-.		/ AND
+	W5CFA-.		/ (;)
+/ 	BYE			Special!
+/ 
+/ 	Exits to the operating system.
+
+
+/ ----	BYE -- word # 123
+
+W123Name,
+
+	/ stringengize( BYE )
+102
+131
+105
+
+	.+0-W123Name
+	W123CFA-W62CFA
+W123CFA,
+	W123CFA-.		/ BYE
+W123PFA,
+	JMS I StupidLiteral0		/ MSBYE
+	MSBYE
+	JMS I StupidStorePC0		/ PC!
+/ 	(LASTWORD)              M: ( -> )
+/ 	                        R: ( -> )
+/ 
+/ 	Doesn't do anything, but lets us find the last word in the
+/ 	dictionary so we can initialize InitialLAST.
+
+
+/ ----	(LASTWORD) -- word # 1001
+
+W1001Name,
+
+	/ stringengize( (LASTWORD) )
+50
+114
+101
+123
+124
+127
+117
+122
+104
+51
+
+	.+0-W1001Name
+	W1001CFA-W123CFA
+W1001CFA,
+	W4CFA-.		/ (:)
+W1001PFA,
+	W5CFA-.		/ (;)
+
+
+RamEnd,
+
+
+
+/ --------- DUMP OF QDL SYMBOL TABLE ----------
+/
+/
+/ (COLD) -> W1000
+/ (LASTWORD) -> W1001
+/ (NEXT) -> W0
+/ Next -> W1
+/ Next_A -> W2
+/ EXEC -> W3
+/ (:) -> W4
+/ (;) -> W5
+/ (CONSTANT) -> W6
+/ (VAR) -> W7
+/ (BRANCH) -> W8
+/ pBranch -> W9
+/ (0BRANCH) -> W10
+/ ($) -> W11
+/ @ -> W12
+/ B@ -> W13
+/ W@ -> W14
+/ CVTW@ -> W15
+/ ! -> W16
+/ B! -> W17
+/ W! -> W18
+/ ++ -> W19
+/ DUP -> W20
+/ 1 -> W21
+/ + -> W22
+/ SWAP -> W23
+/ DROP -> W24
+/ >R -> W25
+/ <R -> W26
+/ R -> W27
+/ RP! -> W28
+/ OVER -> W29
+/ MP! -> W30
+/ MP@ -> W31
+/ - -> W32
+/ NEG -> W33
+/ AND -> W34
+/ OR -> W35
+/ NOT -> W36
+/ << -> W37
+/ >> -> W38
+/ 0< -> W39
+/ (LIT) -> W40
+/ < -> W41
+/ > -> W42
+/ 0= -> W43
+/ 0 -> W44
+/ = -> W45
+/ .NYBBLE -> W46
+/ EMIT -> W47
+/ .NYBBLES -> W48
+/ (DO) -> W49
+/ (LOOP) -> W50
+/ . -> W51
+/ TYPE -> W52
+/ COUNT -> W53
+/ ?ABORT -> W54
+/ ?KEY -> W55
+/ ABORT -> W56
+/ CR -> W57
+/ NL -> W58
+/ INBUF -> W59
+/ IN -> W60
+/ GETLINE -> W61
+/ KEY -> W62
+/ ISCONTROL -> W63
+/ NEXTCHAR -> W64
+/ TOKEN -> W65
+/ $= -> W66
+/ LAST -> W67
+/ ID>$ -> W68
+/ PREV -> W69
+/ VLIST -> W70
+/ FIND -> W71
+/ DIGITMAP -> W72
+/ ISDIGIT -> W73
+/ >NYBBLE -> W74
+/ >NYBBLES -> W75
+/ ISNUMBER -> W76
+/ PROMPT -> W77
+/ INTERPRET -> W78
+/ (+LOOP) -> W79
+/ (DP@) -> W80
+/ (LAST@) -> W81
+/ IDMSG1 -> W82
+/ IDMSG2 -> W83
+/ IDMSG3 -> W84
+/ IDENTIFY -> W85
+/ DP -> W86
+/ (OLIT) -> W87
+/ O@ -> W88
+/ O! -> W89
+/ B, -> W90
+/ W, -> W91
+/ , -> W92
+/ O, -> W93
+/ $, -> W94
+/ ALLOT -> W95
+/ CREATE -> W96
+/ NAME? -> W97
+/ LEN? -> W98
+/ VARIABLE -> W99
+/ CONSTANT -> W100
+/ CODE -> W101
+/ $ -> W102
+/ :DONE -> W103
+/ :DP -> W104
+/ :LAST -> W105
+/ :MP -> W106
+/ ; -> W107
+/ :ABORT -> W108
+/ : -> W109
+/ NEST? -> W110
+/ IMMEDIATE -> W111
+/ DO -> W112
+/ LOOP -> W113
+/ +LOOP -> W114
+/ REPEAT -> W115
+/ UNTIL -> W116
+/ IF -> W117
+/ ELSE -> W118
+/ ENDIF -> W119
+/ ?EMIT -> W120
+/ (EMIT) -> W121
+/ (KEY) -> W122
+/ BYE -> W123
+	$
+
+

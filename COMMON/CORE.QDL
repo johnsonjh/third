@@ -1,0 +1,2458 @@
+\ ----------------------------------------------------------------------
+\ 
+\			BASIC WORDS
+\ 
+\	These words are the basic FORTH system. Different projects extend
+\	this by hanging words off the base system.
+\ 
+\	These words must begin the dictionary so the base words don't have
+\	to know anything about the project-specific words.
+\ 
+\	The last word of the base system will always be ABORT. The first
+\	word of the project-specific system should specify ABORT as its
+\	previous word.
+\ 
+\	The project-specific words must include ?KEY, KEY, and EMIT.
+\ 
+\ Revisions:	04/21/97 RLI - Changed the flags byte to be a flags longword.
+\ 		04/22/01 RLI - Added SYSCALL and DROP opcodes.
+\ 		05/03/01 RLI - Glib reg- VM ops encourage backwards
+\ 		               subtracts. Now I have to look at them all.
+\ 		               Oops. Fixing it breaks control over growing
+\ 		               the math stack direction! reg- and reg+ will
+\ 		               now do reverse subtracts when appropriate.
+\ 		               I can either add a SWAP operation or special
+\ 		               case reg-. I think I'll add SWAP; making a
+\ 		               reverse minus would be more efficient (since
+\ 		               it's only used by reg-), but we're not
+\ 		               interested in efficiency.
+\ 		05/10/01 RLI - ($) incorrectly skipped count byte.
+\ 
+\ 		               BTW, I've realized that .NYBBLES assumes
+\ 		               word size is an even multiple of four
+\ 		               bits. There'll be no 18-bit THIRD until
+\ 		               I figure out what to do about that.
+\ 
+\ 		               Fixed a bunch of bogus blank line comments.
+\ 		               This hadn't been a problem on DOS with ^M^J
+\ 		               line terminators, but popped up when things
+\ 		               were moved to Unix.
+\ 
+\ ----------------------------------------------------------------------
+
+\ ----
+\ 
+\	Primitives
+\ 
+\	These words make up the absolute core of the FORTH system. For most
+\	of them, I just can't think of any way to turn them into high-level
+\	FORTH words.
+\ 
+\ ----
+
+	code (next)
+
+\	(NEXT)				M: ( -> )
+\					R: ( -> )
+\ 
+\	This is the "inner interpreter". It knows how to fetch and execute
+\	the next FORTH word. You should probably not refer to this word in
+\	your FORTH code as it is highly unlikely that it will prove useful
+\	(most FORTH systems don't provide a header for this word).
+\ 
+\ Revisions:
+\ 
+\	07/29/99 RLI - code version
+\ 
+\	There are actually several generally useful chunks of code included
+\	here, because they are either useful here or there is no really
+\	good place to put them (but they have to go _somewhere!).
+\ 
+\ ################################################### 
+\ 
+\	There isn't any really good place to describe what's going on, so
+\	this will have to do.
+\ 
+\	The .mini4 files contain descriptions of the machine code needed
+\	to implement the SCIFORTH primitives in a hypothetical assembly
+\	language for a four-level stack machine modelled on a
+\	traditional HP calculator. These descriptions will be compiled
+\	into machine code for the specific processor by the appropriate
+\	version of the QDL collator. The descriptions are intended to be
+\	compilable in either a simple minded manner or, should someone
+\	get really enthused in writing a QDL collator, in an optimized
+\	manner.
+\ 
+\	The intent is to describe SCIFORTH in a sequence of statements
+\	with limited stack depth. In addition to the small mini4 stack,
+\	SCIFORTH needs a number of registers; it is assumed to be
+\	inexpensive enough to access these registers that the mini4 code
+\	does not need to expend a lot of effort trying to keep things on
+\	the stack; i.e., if MP is used twice, the mini4 code assumes
+\	that a sequence like MP@ <stuff> MP@ is preferred to a sequence
+\	like MP@ DUP <stuff>.
+\ 
+\	The mini4 machine is a single-stack machine; it has only a 
+\	math stack. The return stack is constructed by mini4 operations
+\	on registers and memory.
+\ 
+\	The smallest addressable unit in SCIFORTH is the 'byte'.
+\	SCIFORTH deals primarily in 'cells', which may be one or more
+\	'byte's long. There may be an additional intermediate unit on
+\	which the machine may operate called the 'word'. A 'byte' or
+\	'word' may be fetched or stored to memory, but all operations in
+\	the SCIFORTH math stack operate strictly on 'cell's. 'Byte's and
+\	'word's are converted to 'cell's as they are fetched and stored.
+\	Upon storing a 'byte' or 'word', the conversion is done by
+\	issuing the appropriate type of transaction. When fetching a
+\	'byte' or 'word', the value fetched may be either sign-extended
+\	or zero-extended to form a 'cell' for use on the math stack.
+\ 
+\	An SCIFORTH implementation is not required to distinguish
+\	between 'byte's, 'word's, and 'cell's. It is possible to have an
+\	implementation with only 'cell's or an implementation with only
+\	'byte's and 'cell's.
+\ 
+\	---------------------- MINI4 OPCODES ----------------------
+\ 
+\	@	( Address -> Value ) Fetch a cell from memory. 
+\ 
+\	!	( Value, Address -> ) Write a cell to memory.
+\ 
+\	@.zb	( Address -> Value ) Fetch a byte from memory and
+\		zero-extend it to a cell. On machines with one-byte
+\		cells, this is equivalent to @.
+\ 
+\	!.b	( Value, Address -> ) Write a byte to memory. On
+\		machines with one-byte cells, this is equivalent to !.
+\ 
+\	@.sw	( Address -> Value ) Fetch a word from memory and
+\		sign-extend it to a cell. On machines with one-word
+\		cells, this is equivalent to @.
+\ 
+\	@.zw	( Address -> Value ) Fetch a word from memory and
+\		sign-extend it to a cell. On machines with one-word
+\		cells, this is equivalent to @.
+\ 
+\	!.w	( Value, Address -> ) Write a word to memory. On
+\		machines with one-word cells, this is equivalent to !.
+\ 
+\	REG@	( -> Value ) Copy the named register to the top of the 
+\		stack. The register names are described below.
+\ 
+\	REG!	( Value -> ) Copy the top of the stack to the
+\		named register. The register names are described below.
+\ 
+\	+	( a, b -> a+b ) Add the top two cells on the stack,
+\		leaving the result on the stack.
+\ 
+\	-	( a, b -> a-b ) Subtract the top two cells on the 
+\		stack, leaving the result on the stack.
+\ 
+\	AND	( a, b -> a AND b ) Perform a bitwise AND between the
+\		top two elements on the stack, leaving the result on the
+\		stack.
+\ 
+\	OR	( a, b -> a OR b ) Perform a bitwise OR between the top
+\		two elements on the stack, leaving the result on the
+\		stack.
+\ 
+\	XOR	( a, b -> a XOR b ) Perform a bitwise XOR between the
+\		top two elements on the stack, leaving the result on the
+\		stack.
+\ 
+\	GO label ( -> ) Jump to the named label.
+\ 
+\	ELSEGO label ( flag -> ) Jump to the named label if the top of the
+\		stack is zero.
+\ 
+\	<GO label ( a, b -> ) Jump to named label if a < b.
+\ 
+\	NEG	( a -> -a ) Form the two's complement of the cell on top
+\		of the stack.
+\ 
+\	NOT	( a -> ~a ) Form the one's complement of the cell on top
+\		of the stack.
+\ 
+\	<<	( a, b -> a<<b ) Shift left.
+\ 
+\	>>	( a, b -> a>>b ) Shift right (logical).
+\ 
+\	DUP	( a -> a, a ) Push a copy of the top of stack onto the
+\		stack.
+\ 
+\ 	DROP	( a -> ) Drop something from the stack.
+\ 
+\ 	SYSCALL	( -> ) Escape hatch for assembly language. The math
+\ 		stack depth is assumed not to change (this required the
+\ 		addition of DROP).
+\ 
+\	---------------------- MINI4 PSEUDOOPS -------------------------
+\ 
+\	;	This pseudo-instruction informs QDL that the stack
+\		should be empty. The QDL collator should issue an error
+\		message if the stack is not empty. It is intended
+\		primarily as a debugging aid.
+\ 
+\	LABEL label ( -> ) Declare a label. Note that these labels are
+\		global, as opposed to the intentionally local scope of
+\		QDL %LABELs.
+\ 
+\	#	( -> ) The rest of the line is copied to the output as a
+\		comment.
+\ 
+\	(	( -> ) The rest of the line is skipped.
+\ 
+\	MP+	This word adds the FORTH math stack pointer to the cell
+\		on the stack. In a system that grows the math stack
+\		downward, this is equivalent to "MP@ +". In a system
+\		that grows the math stack upward, this is equivalent to
+\		"MP@ SWAP -". This opcode allows systems which grow the FORTH
+\		math stack either way to be built from the same source
+\		code; In both systems, a word is dropped from the math
+\		stack by "CELLSIZE MP+ MP!".
+\ 
+\	MP-	This word subtracts the cell on the stack from the FORTH
+\ 		math stack pointer. In a system that grows the math
+\		stack downward, this is equivalent to "MP@ SWAP -". In a
+\		system that grows the math stack upward, this is
+\		equivalent to "MP@ +". This opcode allows systems which
+\		grow the FORTH math stack either way to be built from
+\		the same source code; in both systems, space is made for
+\		an item on the math stack by "CELLSIZE MP- MP!".
+\ 
+\	RP+	This word adds the FORTH return stack pointer to the
+\		cell on the stack. In a system that grows the return
+\		stack downward, this is equivalent to "RP@ +". In a
+\		system that grows the math stack upward, this is
+\		equivalent to "RP@ SWAP -". This opcode allows systems which
+\		grow the FORTH return stack either way to be built from
+\		the same source code; in both systems, a word is dropped
+\		from the return stack by "CELLSIZE RP+ RP!".
+\ 
+\	RP-	This word subtracts the cell on top of the stack from the
+\ 		FORTH return stack pointer. In a system the grows the return
+\		stack downward, this is equivalent to "RP@ SWAP -". In a
+\		system that grows the math stack upward, this is
+\		equivalent to "RP@ +". This opcode allows systems which
+\		grow the FORTH return stack either way to be built from
+\		the same source code; in both systems, space is made for
+\		an item on the return stack by "CELLSIZE RP- RP!".
+\ 
+\	NEXT	Executes the next FORTH word. This is equivalent to
+\		branching to Next:, below, but is given an opcode to
+\		deal with the variety of possible ways in which such a
+\		branch might be accomplished (for example, branching to
+\		the address in the NEXT register would allow a variety
+\		of Next routines to be used; perhaps one that yields in
+\		a cooperative multitasking environment could be
+\		provided).
+\ 
+\	BYTE value ( -> ) Emits a constant byte into the generated code
+\		stream. This is primarily for the creation of DIGITMAP,
+\		which is a pre-initialized array of bytes.
+\ 
+\	CELLSIZE ( -> Number of bytes in a cell ) Push the size of a
+\		cell in bytes onto the stack.
+\ 
+\	DEFINITION ( -> Offset to definition in bytes ) Push the offset
+\		from a CFA to the word's definition onto the stack.
+\ 
+\ 	SWAP	( a b -> b a ) Swaps the top two items on the math stack.
+\ 
+\	END	( -> ) Indicates the end of the CODE source. The CODE
+\		compiler returns to QDL.
+\ 
+\	Anything else is assumed to be a literal. Yes, this means it's
+\	not possible for there to be a syntax error. Yes, this does mean
+\	finding typos etc. will be painful.
+\ 
+\	----------------------- REGISTERS ------------------------
+\ 
+\	Several registers are needed for this effort. In the pseudocode
+\	descriptions in these files, those registers are:
+\ 
+\	NEXT 	Contains the address of the code starting at Next:, below.
+\		This is typically used as a convenience for hand-assembled
+\		CODE words, as it allows such a word to exit by jumping to
+\		the contents of a register rather than requiring that an
+\		offset to Next: be calculated. CODE words that are part of
+\		the SCIFORTH source code will typically branch to Next:
+\		instead of jumping to the contents of the NEXT register.
+\ 
+\		The contents of this register are initialized by the startup
+\		code. It may be re-initialized if the code moves (for
+\		example, if SCIFORTH is moved from ROM to RAM in preparation
+\		for re-programming the FLASH ROM containing SCIFORTH).
+\ 
+\	PC	Contains the machine code instruction pointer. This is
+\		used to describe branches; loading a value into the PC
+\		is equivalent to branching to that address.
+\ 
+\		The PC cannot be fetched; that is, PC@ is not valid.
+\ 
+\	IP	Contains the FORTH instruction pointer. The cell pointed to
+\		by IP contains a pointer to the CFA of the next FORTH word
+\		to be executed.
+\ 
+\		The startup code typically begins executing SCIFORTH by
+\		loading the address of (COLD) into IP and jumping to Next:.
+\ 
+\	RP	Contains the return stack pointer. This is the address of
+\		the last item written to the return stack in memory. The
+\		return stack actually contains two more items in the
+\		R2 and R1 registers, described below.
+\ 
+\		RP is decremented before an item is moved from the return
+\		stack cache to memory. It is incremented after an item is
+\		moved from memory to the return stack cache.
+\ 
+\	MP	Contains the math stack pointer. This is the address of
+\		the last item written to the math stack in memory. The
+\		math stack actually contains two more items in the M2 and
+\		M1 registers, described below.
+\ 
+\		MP is decremented before an item is moved from the math
+\		stack cache to memory. It is incremented after an item is
+\		moved from memory to the math stack cache.
+\	
+\	CFA	Contains the address of the CFA of the FORTH word currently
+\		being executed. This is calculated by Next: as part of
+\		finding the next word to execute and is used by such words
+\		as (VAR) and (CONSTANT), which need to be able to find the
+\		definition of the current word being executed.
+\ 
+\	InitialMP Contains the initial value for the math stack pointer;
+\		that is, the address of the cell immediately above the
+\		memory region in which the math stack is to reside. It is
+\		initialized by the startup code before FORTH code begins
+\		to be executed.
+\ 
+\	InitialRP Contains the initial value for the return stack pointer;
+\		that is, the address of the cell immediately above the
+\		memory region in which the return stack is to reside. It is
+\		initialized by the startup code before FORTH code begins
+\		to be executed.
+\ 
+\	There are two additional registers which are not needed by the core
+\	SCIFORTH dictionary, but are useful for implementations that need to
+\	be moved around in memory (such as copying themselves from ROM to
+\	RAM). They are:
+\ 
+\	InitialDP Contains the initial value for the dictionary pointer;
+\		that is, the address of the cell immediately following the
+\		current dictionary. This is initialized by the startup code
+\		before FORTH code begins to be executed.
+\ 
+\	InitialLAST Contains the initial value for the pointer to the CFA of
+\		the last word in the dictionary. This is initialized by the
+\		startup code before FORTH code begins to be executed.
+\ 
+\ ################################# 
+\	
+\	This file contains several snippets of code:
+\ 
+\	Next	Code to fetch the pointer to the next word to be executed
+\	Next_A	Code to execute the word after the pointer has been fetched
+\ 
+\ ################################ 
+\ 
+\	Next
+\ 
+\	This code fetches the pointer to the next word to be executed. It
+\	falls through to Next_A, which jumps to the machine code which knows
+\	how to execute the word.
+\ 
+
+Label Next
+
+\	Fetch the offset to the CFA of the word to be executed next and
+\	relocate it to form the address of the CFA.
+
+	IP@ @ IP@ + CFA! ?
+
+\	Advance the IP past the cell just fetched.
+
+	IP@ CELLSIZE + IP! ?
+
+\	Next_A
+\ 
+\	This code takes the pointer to the next word to be executed in CFA
+\	and uses it to locate and enter the machine code which knows how to
+\	execute the word. This code is used by both (NEXT) and EXEC.
+
+Label Next_A
+
+\	Fetch and relocate the pointer to the CFA of the word that knows
+\	how to execute this word.
+
+	CFA@ @ CFA@ + 		( -> CFA of executor )
+
+\	Form a pointer to the code contained in that word's definition.
+
+	DEFINITION +	( CFA of executor -> definition of executor )
+
+\	Jump to the code that knows how to execute this word.
+
+	PC! ?
+
+	;
+	code exec
+
+\	EXEC - Execute a word whose address is on top of the math stack.
+\ 
+\	M: ( cfa -> [depends on word executed] )
+\	R: ( -> )
+\ 
+\	This word needs intimate knowledge of (NEXT) in order to work
+\	correctly. It works by stuffing the address of the word to be
+\	executed where (NEXT) puts it after relocating it and branching
+\	to the place in (NEXT) where the transfer is made. In terms of our
+\	hyphothetical skeleton machine, that means copying the top of the
+\	math stack to CFA and jumping to Next_A:
+\ 
+\ Revisions:
+\	07/29/99 RLI - code version
+
+\	Copy the top of the math stack to CFA.
+
+	MP@ @ CFA! ?
+
+\	Pop the CFA address from the math stack.
+
+	CELLSIZE MP+ MP! ?
+
+\	Branch to Next_A
+
+	GO Next_A
+	? ;
+	code (:)
+
+\	(:) - Enter a FORTH word	M: ( -> )
+\					R: ( -> IP )
+\ 
+\	This word contains machine code which knows how to execute a FORTH
+\	word. Executing a FORTH word consists of saving the current IP on
+\	the stack (that's the address to which we'll return after this FORTH
+\	word is executing) and replacing IP by the address of the current
+\	word's definition. The address of the current word's header is
+\	conveniently left for us in CFA by NEXT.
+\ 
+\ Revisions:
+\	07/29/99 RLI - code version
+
+\	Make space for IP on the return stack
+
+	CELLSIZE RP- RP! ?
+
+\	Store IP on the return stack.
+
+	IP@ RP@ ! ?
+
+\	Put the address of the current word's definition in IP.
+
+	CFA@ DEFINITION + IP! ?
+
+	NEXT ? ;
+	code (;)
+
+\	(;) - Terminate execution of a FORTH word
+\ 
+\	M: ( -> )
+\	R: ( Return address -> )
+\ 
+\	This word executes the end of a FORTH word. It pops the IP from the
+\	return stack and begins execution there.
+\ 
+\ Revisions:
+\	07/29/99 RLI - code version.
+
+\	Copy the top of the return stack into IP.
+
+	RP@ @ IP! ?
+
+\	Drop the return address from the return stack.
+
+	CELLSIZE RP+ RP! ?
+
+	NEXT ? ;
+	code (constant)
+
+\	(CONSTANT) - Execute a constant
+\ 
+\	M: ( -> Whatever's in the first cell of the word's definition )
+\	R: ( -> )
+\ 
+\	This word contains the machine code which knows how to execute a
+\	CONSTANT. Executing a CONSTANT consists of taking the first cell
+\	of the CONSTANT's definition and pushing it on the math stack.
+\ 
+\	NEXT conveniently leaves the address of the CONSTANT's header in CFA.
+\ 
+\ Revisions:
+\	07/29/99 RLI - code version.
+
+\	Make space on the math stack
+
+	CELLSIZE MP- MP! ?
+
+\	Calculate the address of the first cell of the definition.
+
+	CFA@ DEFINITION +	( -> Address of definition )
+
+\	Copy the first cell of the definition into the top of the math
+\	stack.
+
+	@ MP@ ! ?			( Address of definition -> )
+
+	NEXT ? ;
+	code (var)
+\	(VAR) - Code which knows how to execute a VAR
+\ 
+\	M: ( -> The address of the word's definition )
+\	R: ( -> )
+\ 
+\	This word contains the machine code which knows how to execute a
+\	VARiable. Execution of a VARiable consists of pushing the address of
+\	the VARiable's definition onto the math stack.
+\ 
+\	NEXT conveniently leaves the address of the VARiable's header in
+\	CFA.
+\ 
+\ Revisions:
+\	07/29/99 RLI - code version.
+
+\	Make space on the math stack for one cell.
+
+	CELLSIZE MP- MP! ?
+
+\	Calculate the address of the current word's definition, leaving
+\	the result in the top of the math stack.
+
+	CFA@ DEFINITION + MP@ ! ?
+	NEXT ? ;
+	code (branch)
+\	(BRANCH) - Branch to a word
+\ 
+\	M: ( -> )
+\	R: ( -> )
+\ 
+\	This word contains the machine code to execute a branch. A branch is
+\	executed by adding the offset in the code following the reference 
+\	to this word to the IP. This word is generally not referred to
+\	directly by users typing in code; the references are built
+\	implicitly by words like IF, UNTIL, LOOP, etc.
+\ 
+\	This code is also used as a utility routine by a variety of other
+\	low-level words. They enter at the label pBranch:
+\ 
+\ Revisions:
+\	07/29/99 RLI - code version
+
+Label pBranch
+
+\	Fetch the branch offset
+
+	IP@ @		( -> Branch offset )
+
+\	Relocate the offset to form the address to which it refers
+
+	IP@ +		( Branch offset -> Branch address )
+
+\	Start executing there
+
+	IP! ?		( Branch address -> )
+
+	NEXT ? ;
+	code (0branch)
+\	(0BRANCH) - Branch if the top of stack is zero.
+\ 
+\	M: ( flag -> )
+\	R: ( -> )
+\ 
+\	This word knows how to conditionally branch based on the top of the
+\	stack. If the top of stack is zero, the cell  following the reference
+\	to (0BRANCH) is added to IP. Otherwise, IP is simply incremented past
+\	the offset.
+\ 
+\	This word is typically not referred to by users typing code.
+\	References to it are generated implicitly by words like IF.
+\ 
+\	The branch is performed by entering (BRANCH) at pBranch.
+\ 
+\ Revisions:
+\	07/29/99 RLI - code version
+
+\	Grab the flag from the math stack and pop the math stack.
+
+	MP@ @			( -> flag )
+	CELLSIZE MP+ MP!	( flag -> flag )
+
+\	If the flag is zero, branch.
+
+	ELSEGO pBranch ?	( flag -> )
+
+\	Otherwise, skip the offset and continue.
+
+	IP@ CELLSIZE + IP! ?
+	NEXT ? ;
+	code ($)
+\	($) - Word which knows how to execute a string
+\ 
+\	M: ( -> Address of word's definition, length of string )
+\	R: ( -> )
+\ 
+\	This word executes a string variable. It puts the address of the
+\	first character of the string and the string's length on the
+\	math stack. (NEXT) conveniently leaves the address of the string's
+\	CFA in CFA.
+\ 
+\ Revisions:
+\	07/29/99 RLI - code version.
+\ 	05/10/01 RLI - Forgot to go to the word's definition before
+\ 	               skipping the count byte.
+
+\	Make space on the math stack for two cells.
+
+	CELLSIZE DUP + MP- MP! ?
+
+
+\	Calculate the address of the word's definition and fetch the length
+\	byte from it into the top of the math stack.
+
+	CFA@ DEFINITION + @.zb MP@ ! ?
+
+\	Calculate the address of the start of the string data, leaving the
+\	result in the second of the math stack.
+
+	CFA@ DEFINITION + 1 + CELLSIZE MP+ ! ?
+	NEXT ? ;
+
+\ ----
+\ 
+\	Fetches and stores
+\ 
+\ ----
+
+	code @
+\	@ - Longword fetch
+\ 
+\	M: ( a -> b )
+\	R: ( -> )
+\ 
+\	a is used as an address to fetch b.
+\ 
+\ Revisions:
+\	07/29/99 RLI - code version
+
+\	Fetch a from the math stack
+
+	MP@ @		( -> a )
+
+\	Fetch the cell pointed to by a
+
+	@		( a -> b )
+
+\	Replace a with b in the math stack
+
+	MP@ ! ?		( b -> )
+
+	NEXT ? ;
+	code b@
+\	B@ - Byte fetch
+\ 
+\	M: ( a -> b )
+\	R: ( -> )
+\ 
+\	a is used as an address to fetch b. b is an unsigned byte; it's
+\	zero-extended to a cell.
+\ 
+\ Revisions:
+\	07/29/96 RLI - Modified for new register usage
+\	07/29/99 RLI - code version.
+
+\	Fetch the address of the byte from the math stack.
+
+	MP@ @ 
+
+\	Fetch and zero-extend the byte
+
+	@.zb
+
+\	Replace the address in the math stack with the byte
+
+	MP@ ! ?
+
+	NEXT ? ;
+	code w@
+\	W@ - word fetch
+\ 
+\	M: ( a -> b )
+\	R: ( -> )
+\ 
+\	a is used as an address to fetch b. b is an unsigned word; it's
+\	zero-extended to a cell.
+\ 
+\ Revisions:
+\	07/30/99 RLI - code version
+
+\	Fetch the address from the math stack
+
+	MP@ @			( -> a )
+
+\	Fetch and zeroextend the word
+
+	@.zw			( a -> b )
+
+\	Replace the address with the word on the math stack
+
+	MP@ ! ?			( a -> )
+
+	NEXT ? ;
+	code cvtw@
+\	CVTW@ - Convert word fetch
+\ 
+\	M: ( a -> b )
+\	R: ( -> )
+\ 
+\	a is used as an address to fetch b. b is a signed word; it's
+\	sign-extended to a cell.
+\ 
+\ Revisions:
+\ 
+\	07/29/99 RLI - code version
+
+\	Fetch the address from which the word is to be fetched.
+
+	MP@ @		( -> a )
+
+\	Fetch the word and sign extend it
+
+	@.sw		( a -> b )
+
+\	Replace a with b
+
+	MP@ ! ?		( b -> )
+
+	NEXT ? ;
+
+	code !
+\	! - Store
+\ 
+\	M: ( a b -> )
+\	R: ( -> )
+\ 
+\	The longword a is stored at address b.
+\ 
+\ Revisions:
+\	07/29/99 RLI - code version
+
+\	Fetch a
+
+	CELLSIZE MP+ @		( -> a )
+
+\	Fetch b
+
+	MP@ @			( a -> a, b )
+
+\	Store the longword
+
+	! ?			( a, b -> )
+
+\	Drop a and b from the stack
+
+	CELLSIZE DUP + MP+ MP! ?
+
+	NEXT ? ;
+	code b!
+\	B! - Byte store
+\ 
+\	M: ( a b -> )
+\	R: ( -> )
+\ 
+\	The byte a is stored at address b.
+\ 
+\ Revisions:
+\	07/29/99 RLI - code version
+
+\	Fetch the byte and the address at which it should be stored.
+
+	CELLSIZE MP+ @		( -> a )
+	MP@ @			( a -> a, b )
+
+\	Store the byte a at address b
+
+	!.b ?			( -> )
+
+\	Drop a and b from the math stack
+
+	CELLSIZE DUP +		( -> 2 * Word_C_Bytes )
+	MP+ MP! ?
+
+	NEXT ? ;
+	code w!
+\	W! - Word store
+\ 
+\	M: ( a, b -> )
+\	R: ( -> )
+\ 
+\	The word a is stored at address b.
+\ 
+\ Revisions:
+\	07/29/99 RLI - code version
+
+\	Fetch a
+
+	CELLSIZE MP+ @		( -> a )
+
+\	Fetch b
+
+	MP@ @			( a -> a, b )
+
+\	Store a at b
+
+	!.w ?			( a, b -> )
+
+\	Drop a and b from the math stack
+
+	CELLSIZE DUP + MP+ MP! ?
+
+	NEXT ? ;
+
+\ --	++ - Increments a variable
+\ 
+\	( v -> )
+\ 
+\	The longword at v is fetched, incremented, and stored back.
+
+	: ++ dup @ %ref 1 + swap ! ;
+
+\ ----
+\ 
+\	Stack manipulation
+\ 
+\ ----
+
+	code dup
+\	DUP - Duplicate top of stack
+\ 
+\	M: ( a -> a, a )
+\	R: ( -> )
+\ 
+\	Push a copy of whatever is on the top of the math stack onto the
+\	math stack.
+\ 
+\ Revisions:
+\	07/29/96 RLI - Modified for new register usage.
+\	07/29/99 RLI - code version
+
+\	Fetch a
+
+	MP@ @			( -> a )
+
+\	Make space for the copy of a on the math stack
+
+	CELLSIZE MP- MP!	( a -> a )
+
+\	Store the new copy of a
+
+	MP@ ! ?			( a -> )
+
+	NEXT ? ;
+	code swap
+\	SWAP - Swap the top two items on the stack
+\ 
+\	M: ( a, b -> b, a )
+\	R: ( -> )
+\ 
+\ Revisions:
+\	07/29/99 RLI - code version
+
+\	Fetch a and b
+
+	CELLSIZE MP+ @		( -> a )
+	MP@ @			( a -> a, b )
+
+\	Store b and a
+
+	CELLSIZE MP+ !		( a, b -> a )
+	MP@ ! ?			( a -> )
+
+	NEXT ? ;
+	code drop
+\	DROP - Forget top of stack
+\ 
+\	M: ( a -> )
+\	R: ( -> )
+\ 
+\	This could be done as : DROP DUP - - ; but that's just as long as
+\	the machine code...
+\ 
+\ Revisions:
+\	07/29/99 RLI - code version
+
+\	Drop a from the stack
+
+	CELLSIZE MP+ MP! ?
+
+	NEXT ? ;
+	code >R
+\	>R - Transfer an item from the math stack to the return stack
+\ 
+\	M:( a -> )
+\	R: ( -> a )
+\ 
+\ Revisions:
+\	07/29/99 RLI - code version
+
+\	Make space for an item on the return stack
+
+	CELLSIZE RP- RP! ?
+
+\	Copy a from the math stack to the return stack.
+
+	MP@ @ RP@ ! ?
+
+\	Drop a from the math stack.
+
+	CELLSIZE MP+ MP! ?
+
+	NEXT ? ;
+	code <R
+\	<R - Transfer an item from the return stack to the math stack
+\ 
+\	M: ( -> a )
+\	R: ( a -> )
+\ 
+\ Revisions:
+\	07/30/99 RLI - code version
+
+\	Make space on the math stack for one cell.
+
+	CELLSIZE MP- MP! ?
+
+\	Fetch the top of the return stack
+
+	RP@ @ 			( -> a )
+
+\	Store it on the math stack
+
+	MP@ ! ?			( a -> )
+
+\	Drop a from the return stack.
+
+	CELLSIZE RP+ RP! ?
+
+	NEXT ? ;
+	code R
+\	R - Transfer an item from the return stack to the math stack, but
+\	    don't pop the math stack.
+\ 
+\	M: ( -> a )
+\	R: ( a -> a )
+\ 
+\ Revisions:
+\	07/29/99 RLI - code version.
+
+\	Make space on the math stack for one cell.
+
+	CELLSIZE MP- MP! ?
+
+\	Copy the top of the return stack over to the math stack.
+
+	RP@ @ MP@ ! ?
+	NEXT ? ;
+	code RP!
+\	RP! - Initialize the return pointer
+\ 
+\	M: ( -> )
+\	R: Initialized
+\ 
+\	This is used during error recovery and system initialization. When
+\	aborting from an error, the return stack is cleaned and we go back
+\	to interpreting.
+\ 
+\ Revisions:
+\	07/29/99 RLI - code version.
+
+	InitialRP@ RP! ?
+	NEXT ? ;
+
+\ --	OVER - Duplicate second item on math stack
+\ 
+\	( a b -> a b a )
+\ 
+\	This is smaller than the equivalent assembly on an i960
+
+	: over >r dup <r swap ;
+
+	code mp!
+\	MP! - Initialize the math stack pointer
+\ 
+\	M: Initialized
+\	R: ( -> )
+\ 
+\	This is used during error recovery and system initialization. When
+\	aborting from an error, the math  stack is cleaned and we go back
+\	to interpreting.
+\ 
+\ Revisions:
+\	07/29/99 RLI - code version
+
+\	Initialize MP
+
+	InitialMP@ MP! ?
+
+	NEXT ? ;
+	code mp@
+\	MP@ - Fetch the math stack pointer
+\ 
+\	M: ( -> MP )
+\	R: ( -> )
+\ 
+\	This is used by the compiler to verify that the stack has been cleaned
+\	off at the end of compilation. If the math stack at the start of
+\	compilation and the math stack at the end of compilation don't match,
+\	there is probably an unclosed control loop.
+\ 
+\	It should not be assumed that the value returned by MP@ can be used
+\	as an address from which the top item of the math stack can be
+\	fetched; different implementations will have different levels of
+\	stack caching and even differing points in MP@ where the pointer
+\	is updated to make room for a copy of itself.
+\ 
+\ Revisions:
+\	07/29/99 RLI - code version
+
+\	Make space on the math stack for one cell.
+
+	CELLSIZE MP- MP! ?
+
+\	Store a copy of the MP on the math stack.
+
+	MP@ MP@ ! ?
+
+	NEXT ? ;
+
+\ ----
+\ 
+\	Arithmetic and Logic
+\ 
+\	These words perform arithmetic and logic on 32-bit integers.
+\ 
+\ ----
+
+	code -
+\	- - Integer subtraction
+\ 
+\	M: ( a, b -> a-b )
+\	R: ( -> )
+\ 
+\	This word does integer subtraction.
+\ 
+\ Revision:
+\	07/29/99 RLI - code version
+
+\	Fetch a
+
+	CELLSIZE MP+ @		( -> a )
+
+\	Fetch b
+
+	MP@ @			( a -> a, b )
+
+\	Form the difference
+
+	-			( a, b -> a-b )
+
+\	Drop b from the math stack
+
+	CELLSIZE MP+ MP!	( a-b -> a-b )
+
+\	Replace a with the difference
+
+	MP@ ! ?			( a-b -> )
+
+	NEXT ? ;
+	code neg
+\	NEG - Form 2's complement of the top of the math stack.
+\ 
+\	M: ( a -> -a )
+\	R: ( -> )
+\ 
+\ Revision:
+\	07/29/99 RLI - code version
+
+	MP@ @ NEG MP@ ! ?
+	NEXT ? ;
+	code +
+\	+ - Integer addition
+\ 
+\	M: ( a, b -> a+b )
+\	R: ( -> )
+\ 
+\	This word does integer addition.
+\ 
+\ Revision:
+\	07/29/99 RLI - code version
+
+\	Fetch a
+
+	CELLSIZE MP+ @		( -> a )
+
+\	Fetch b
+
+	MP@ @				( a -> a, b )
+
+\	Form the sum
+
+	+				( a, b -> a+b )
+
+\	Drop b from the math stack
+
+	CELLSIZE MP+ MP!		( a+b -> a+b )
+
+\	Replace a with the sum
+
+	MP@ ! ?				( a+b -> )
+
+	NEXT ? ;
+
+	code and
+\	AND - Bitwise logical AND
+\ 
+\	M: ( a, b -> a&b )
+\	R: ( -> )
+\ 
+\ Revisions:
+\ 
+\	07/29/99 RLI - code version.
+
+\	Fetch a and b.
+
+	MP@ @			( -> a )
+	CELLSIZE MP+ @		( a -> a, b )
+
+\	Form the result
+
+	AND			( a, b -> a AND b )
+
+\	Drop a from the math stack
+
+	CELLSIZE MP+ MP!	( a AND b -> a AND b; MP now points to b )
+
+\	Replace b with the result
+
+	MP@ ! ?
+
+\	Execute the next FORTH word
+
+	NEXT ? ;
+	code or
+\	OR - Bitwise logical OR
+\ 
+\	M: ( a, b -> a or b )
+\	R: ( -> )
+\ 
+\ Revisions:
+\	07/29/99 RLI - code version
+
+\	Fetch a
+
+	CELLSIZE MP+ @		( -> a )
+
+\	Fetch b
+
+	MP@ @			( a -> a, b )
+
+\	Form the result
+
+	OR			( a, b -> a OR b )
+
+\	Drop b from the math stack
+
+	CELLSIZE MP+ MP!	( a, b -> a OR b )
+
+\	Replace a with the result
+
+	MP@ ! ?			( a OR b -> )
+
+	NEXT ? ;
+	code not
+\	NOT - Form 1's complement of the top of the math stack.
+\ 
+\	M: ( a -> ~a )
+\	R: ( -> )
+\ 
+\ Revision:
+\	07/29/99 RLI - code version
+
+	MP@ @ NOT MP@ ! ?
+
+	NEXT ? ;
+
+	code <<
+\	<< - Logical left shift
+\ 
+\	M: ( a, b -> a<<b )
+\ 
+\ Revisions:
+\	07/29/99 RLI - code version
+
+\	Fetch a
+
+	CELLSIZE MP+ @		( -> a )
+
+\	Fetch b
+
+	MP@ @ 			( a -> a, b )
+
+\	Form the result
+
+	<<			( a, b -> a<<b )
+
+\	Drop b from the math stack
+
+	CELLSIZE MP+ MP!	( a<<b -> a<<b )
+
+\	Replace a with the result
+
+	MP@ ! ?			( a<<b -> )
+	NEXT ? ;
+	code >>
+\	>> - Logical right shift
+\ 
+\	M: ( a, b -> a>>b )
+\	R: ( -> )
+\ 
+\ Revisions:
+\	07/29/99 RLI - code version
+
+\	Fetch a
+
+	CELLSIZE MP+ @		( -> a )
+
+\	Fetch b
+
+	MP@ @			( a -> a, b )
+
+\	Form result
+
+	>>			( a, b -> a>>b )
+
+\	Drop b from the stack
+
+	CELLSIZE MP+ MP!	( a>>b -> a>>b )
+
+\	Replace a with the result
+
+	MP@ ! ?			( a>>b -> )
+
+	NEXT ? ;
+
+\ ----
+\ 
+\	Comparisons
+\ 
+\ ----
+
+\ --	0< - Integer comparison to zero
+\ 
+\	( a -> 1 iff a<0 )
+\	( a -> 0 otherwise )
+\ 
+\	This implementation works by moving the sign bit to bit 0. It
+\	assumes >> is a logical shift.
+
+	: 0< %bits-1 >> ;
+
+\ --	< - Integer less-than comparison
+\ 
+\	( a b -> 1 iff a<b )
+\	( a b -> 0 otherwise )
+\ 
+\	This implementation works by changing the problem to 0< which
+\	is implemented above.
+
+	: < - %ref 0< ;
+
+\ --	> - Integer greater-than comparison
+\ 
+\	( a b -> 1 iff a>b )
+\	( a b -> 0 otherwise )
+\ 
+\	This implementation works by changing the problem to 0< which is
+\	implemented above.
+
+	: > -
+
+\		Possible results:
+\		  a-b<0 iff b>a, or a<b
+\		  a-b=0 iff b=a, or a=b
+\		  a-b>0 iff b<a, or a>b
+
+	neg
+
+\		Possible results:
+\		  -(a-b)>0 iff b>a, or a<b
+\		  -(a-b)=0 iff b=a, or a=b
+\		  -(a-b)<0 iff b<a, or a>b
+
+	%ref 0< ;
+
+\ --	0= - Integer comparison to zero
+\ 
+\	( a -> 1 iff a=0 )
+\	( a -> 0 otherwise )
+\ 
+\	Note that this serves as a logical NOT.
+\ 
+\	Revisions:	06/25/96 RLI - Oops, didn't work. Made it simpler.
+\			08/26/96 RLI - Oops. Did it backwards. Sigh.
+\ 
+\	: 0= if 1 else 0 endif ;
+
+	: 0= %if %ref 0 %else %ref 1 %endif ;
+
+\ --	= - Integer equals comparison
+\ 
+\	( a b -> 1 iff a=b )
+\	( a b -> 0 otherwise )
+\ 
+\	This implementation works by changing the problem to 0= which is
+\	defined above.
+
+	: = - %ref 0= ;
+
+\ ----
+\ 
+\	Literals in the code
+\ 
+\ ----
+
+	code (lit)
+\	(LIT) - Push a literal on the math stack
+\ 
+\	M: ( -> literal )
+\	R: ( -> )
+\ 
+\	This word knows how to push a literal onto the math stack. The 
+\	reference to (LIT) is followed by a cell containing the literal
+\	to be pushed; that cell  is fetched and pushed on the stack.
+\ 
+\ Revisions:
+\	07/29/99 RLI - code version
+
+\	Make space for the literal on the math stack.
+
+	CELLSIZE MP- MP! ?
+
+\	Fetch the literal and store it on the math stack.
+
+	IP@ @ MP@ ! ?
+
+\	Bump IP past the literal and continue on.
+
+	IP@ CELLSIZE + IP! ?
+
+	NEXT ? ;
+
+\ ----
+\ 
+\	Frequently used constants
+\ 
+\ ----
+
+	constant 0 0
+	constant 1 1
+
+
+\ ----
+\ 
+\	Higher level output
+\ 
+\ ----
+
+\ --	.NYBBLE - Display high-order nybble of top of stack as ASCII hex
+\ 
+\	( a -> a )
+\ 
+\	Revisions:	06/28/96 RLI - Removed assumption about word size.
+\			Well, it stell better be less than 256+4 bits.
+\ 			05/11/01 RLI - Tossed the "65-58" constant, because
+\ 			there was no elegant way to deal with it in a
+\ 			stupid conversion to PAL8.
+
+	: .nybble dup %bits-4 >> ( Put nybble in position
+	48 + 			( Handle '0' through '9'
+	dup 57 >		( Is it larger than '9'?
+	%if 65 58 - + %endif ( If so, add 'A'-('9'+1)
+	emit ;
+
+\ --	.NYBBLES - Display a specified number of nybbles of the top of stack
+\		in hex.
+\ 
+\	( a b -> )
+
+	: .nybbles
+
+\	We need to move the high-order nybble of the value we're going to
+\	display to the high-order nybble of the longword we're going to
+\	display. To do that, we need to dork with b; since we need a copy
+\	later, we'll have to save it on the return stack.
+
+	dup >r
+
+\	Now we need to calculate how many nybbles we need to shift the value
+\	to the left so that the high-order bit of the first nybble we need
+\	to display is at the high-order bit of the top of the math stack.
+
+	%nybbles swap - 2 << <<
+
+\	Now we need to display b nybbles.
+
+	<r %ref 0 %do .nybble 4 << %loop
+
+\	We've now displayed the value, but we have a zero left on top of the
+\	stack. Drop it and exit.
+
+	drop ;
+
+\ --	. - Display all of the nybbles in the top of stack in hex.
+\ 
+\	( a -> )
+\ 
+\	Revisions:	06/26/96 RLI - Added a space after the number
+\			06/28/96 RLI - Removed assumption about word size
+
+	: . %nybbles .nybbles 32 emit ;
+
+\ --	TYPE - Display a counted string
+\ 
+\	( a c -> )
+\ 
+\	c characters are displayed from memory starting at address a.
+
+	: type %lit 0 %do dup b@ emit 1 + %loop drop ;
+
+\ --	COUNT - Extract info about a conted string in memory
+\ 
+\	( a -> a+1 c )
+\ 
+\	Given the address of a counted string in memory, returns the
+\	address of the start of the string and the length of the string
+\	on the stack.
+
+	: count dup b@ swap %ref 1 + swap ;
+
+\ ----
+\ 
+\     Higher level input
+\ 
+\	These words are concerned with accepting a line of text from the user
+\	and chopping that line of text up into pieces.
+\ 
+\	The project-specific dictionary must provide a definition for
+\	INBUF, an array of at least 81 bytes (count byte, 79 character
+\	bytes, and space for the terminating NULL required by TOKEN).
+\ 
+\ ----
+
+\ --	?ABORT - Aborts if a key has been typed at the console
+\ 
+\	( -> )
+\ 
+\	This word is handy for the bottom of a scope loop. It will break out
+\	of whatever is going on if a key is available at the console.
+
+	: ?abort ?key %if abort %endif ;
+
+\ --	CR - Displays a carriage return on the console
+\ 
+\	( -> )
+
+	: cr 13 emit ;
+
+\ --	NL - Displays a newline ( <CR><LF> ) on the console
+\ 
+\	( -> )
+
+	: nl cr 10 emit ;
+
+	variable inbuf 81 bytes
+	variable in 1 cells
+
+\ --	GETLINE - Accept a line of input from the console.
+\ 
+\	This word reads a line of input from the console, storing it in the
+\	string array INBUF. INBUF is arranged as a standard counted string;
+\	the first byte ( INBUF B@ ) is the length of the line and the
+\	remaining bytes are the data from the line.
+\ 
+\	The only control chracters recognized are <CR>, <BS>, and <DEL>.
+\	All other control characters are ignored.
+\ 
+\ Revisions:
+\ 
+\	06/25/96 RLI - State K was drawn with its decision backwards (i.e.,
+\		it was going to state L if it received a non-control char).
+\	06/26/96 RLI - Changed state R's CR to an NL. MOved a DUP in state
+\		D.
+\	07/23/96 RLI - Typo in state F.
+
+	: getline
+
+\	State A: iNitialize the current pointer into the INBUF array. IN
+\	contains the offset of the next byte to be stored into INBUF.
+
+%label a %lit 1 in !
+
+\	State B: Accept input when we're at the beginning of the line.
+\ 
+\	At the beginning of the line, <BS> and <DEL> have no meaning; they
+\	need to be ignored. When one comes in, go to state C to decide
+\	whether it should be ignored. Non-control charactrs need to be
+\	accepted into the buffer; when one comes in, go to state D.
+
+%label b key iscontrol %elsegoto d
+
+\	State C: A control character has arrived when we're at the beginning
+\	of the line. The only character of interest is <CR>; if the 
+\	character is <CR>, go to state R. Otherwise, go back to state B
+\	without doing anything with the control character.
+
+%label c 13 - %elsegoto r %goto b
+
+\	State D: We've received a non-control character. Append it to the
+\	buffer and bump the pointer into the buffer. If the pointer has gone
+\	past position 79 (we don't have to have to worry about whether or
+\	not the terminal wrapped), go to state E. Otherwise, go to state K.
+
+%label d dup in @ inbuf + b! emit	( store and echo the character
+	in ++				( bump pointer into inbuf
+	in @ 79 > %elsegoto k		( Head to K if we're not full
+
+\	State E: Accept input when we're at the end of the line.
+\ 
+\	At the end of the line, only the control characters have meaning.
+\	Since there's no space left in the buffer to store printing
+\	characters, we'll just ignore them. When one comes in, go to state
+\	F. When a control character comes in, go to state G.
+
+%label e key iscontrol %ref 0= %elsegoto g ( head to g if it's a control char
+
+\	State F: Ignore a printing character at the end of the line.
+\ 
+\	We've received a printing character at the end of the line. There's
+\	no space for it in the buffer, so just toss it and go back to
+\	state E.
+
+%label f drop %goto e
+
+\	State G: We have a control character at the end of the line. Look
+\	to see if it's <CR>; if so, go to state Q. Otherwise, go to
+\	state H.
+
+%label g dup 13 - %elsegoto q
+
+\	State H: It's not <CR>. check for <BS>. If it's <BS>, go to state P.
+\	Otherwise, go to state I.
+
+%label h dup 8 - %elsegoto p
+
+\	State I: It's not <BS>. Check for <DEL>. If it's <DEL>, go to state
+\	O. Otherwise, go back to state E.
+
+%label i 127 - %elsegoto o %goto e
+
+\	State J: (deleted)
+
+\	State K: Accept a character in the middle of the buffer. All of the
+\	control characters and printing characters have meaning. If a
+\	control character comes in, go to state L. Otherwise, go to
+\	state D.
+
+%label k key iscontrol %elsegoto d
+
+\	State L: We've received a control character in the middle of the
+\	buffer. Look to see if it's <CR>. If so, go to staet Q. Otherwise,
+\	go to state M.
+
+%label l dup 13 - %elsegoto q
+
+\	State M: Look to see if it's <BS>. If so, go to state P. Otherwise,
+\	go to state N.
+
+%label m dup 8 - %elsegoto p
+
+\	State N: Look to see if it's <DEL>. If so, go to state O. Otherwise,
+\	go to state K.
+
+%label n 127 - %ref 0= %elsegoto k
+
+\	State O: We've received either a <BS> or a <DEL>. Echo <BS> <BS> to
+\	erase the last printable character from the screen. Decrement IN to
+\	erase the last printable character from INBUF. If IN has gone to
+\	the beginning of the line, go to state B. Otherwise, go to state K.
+
+%label o 8 dup emit 32 emit emit in @ %ref 1 - dup in ! 
+	%ref 1 - %elsegoto b %goto k
+
+\	State P: We've received a <BS>. We need to go to state O, but we've
+\	still got the character on the stack so it could be checked for
+\	<DEL> if it wasn't <BS>. Drop the character from the stack and go
+\	to state O.
+
+%label p drop %goto o
+
+\	State Q: We've received a <CR>. We need to go to state R, but we've
+\	still got the character on the stack so it could be checked for
+\	<BS> and <DEL> if it wasn't <CR>. Drop the character from the stack
+\	and go to state R.
+
+%label q drop
+
+\	State R: We're done. Ensure the line is null-termianted becasue
+\	TOKEN requires this. Update the count byte of INBUF from IN; since
+\	IN points at the _next_ character that would be filled by a non-
+\	printing character, the number of characters in INBUF is IN-1.
+\ 
+\	After we're done, IN is initialized to 1 to make TOKEN's life
+\	easier.
+
+%label r %ref 0 in @ inbuf + b! 	( store a null
+	in @ %ref 1 - inbuf b! 		( sture the byte count
+	%ref 1 in !			( initialize IN for TOKEN
+	nl				( let user know we've seen his <CR>
+
+%label z ;
+
+\ --	ISCONTROL - See if an ASCII character is a control character
+\ 
+\	( c -> c f )
+\ 
+\	f = 0 if c is not a control character
+\	f = 1 if c is a control character
+\ 
+\	A control character is either smaller than ` ' or <DEL>.
+\ 
+\ Revisions:
+\ 
+\	06/25/96 RLI - Ambiguous state diagramming turned into an oops in
+\		state A. Swapped states B and C to compensate without
+\		adding extra code.
+
+	: iscontrol
+
+\	State A: Look to see if it's smaller than ' '. If so, go to C.
+\	Otherwise, go to B.
+
+%label a dup 32 < %elsegoto c
+
+\	State B: It's smaller than ' ', but we lost that fact when we did
+\	the (0BRANCH). Push a true back on the stack and exit.
+
+%label b %ref 1 %goto z
+
+\	State C: It's not smaller than ' '; is it <DEL>? Check and exit.
+
+%label c dup 127 =
+
+%label z ;
+
+\ --	NEXTCHAR - Returns the next character from the input buffer
+\ 
+\	( -> c )
+\ 
+\	The character at INBUF[ IN ] is fetched. IN is bumped if the
+\	character was not null.
+
+	: nextchar inbuf in @ + b@ dup %if in ++ %endif ;
+
+\ --	TOKEN - return the next token from INBUF
+\ 
+\	( -> a c )
+\ 
+\	This word looks at the next string from INBUF to find the next
+\	token. Blanks are skipped until a non-blank is found; the address
+\	of the first non-blank is 'a'. The non-blanks are then counted until
+\	a blank is found; the count of non-blanks is 'c'.
+\ 
+\	NEXTCHAR is used to fetch characters from INBUF. NEXTCHAR uses IN
+\	to tell it where the next character is and updates IN after it
+\	fetches a character. Both NEXTCHAR and TOKEN assume there is a
+\	null following INBUF.
+\ 
+\	TOKEN assumes the only whitespace characters it will encounter
+\	in INBUF are NULL and space.
+
+	: token
+
+\	State A: Form the address of the first character we'll examine and
+\	go to state B.
+
+	%label a inbuf in @ +
+
+\	State B: We've not yet seen a non-space character.
+\ 
+\	Get the next character and check for the null terminator. If we've
+\	hit the null terminator, just exit; the copy of the null we would
+\	need for state C if it weren't null will be a zero to tell the
+\	caller that we hit the null before seeing anything. If the
+\	character is not null, go to state C.
+
+	%label b nextchar dup %elsegoto z
+
+\	State C: It's not a null, look for a space. If it's a space, go to
+\	state H. Otherwise, go to state D.
+
+	%label c 32 - %elsegoto h
+
+\	State D: We've found our first non-space character. The token is
+\	at least one character long. Put the initial count on the stack
+\	and go to state E.
+
+	%label d %ref 1
+
+\	State E: Get the next character and look to see if it's the null
+\	at the end of the buffer. If so, go to state I. Otherwise, go to
+\	state F.
+
+	%label e nextchar dup %elsegoto i
+
+\	State F: We've not found the end of the string, but have we found
+\	the end of the token? If the character is space, exit; the correct
+\	count will be on top of the stack. Otherwise, go to state G.
+
+	%label f 32 - %elsegoto z
+
+\	State G: We have another non-space character. Count it and go back
+\	to state E.
+
+	%label g %ref 1 + %goto e
+
+\	State H: We have another space character before the token. Bump the
+\	pointer to the first non-space character and go back to state B.
+
+	%label h %ref 1 + %goto b
+
+\	State I: We've found the null at the end of the buffer immediately
+\	following the token. We have an extry copy of the null on the stack
+\	so that state F could check for a space. Drop the extra copy and
+\	exit.
+
+	%label i drop
+
+\	*** EXIT ***
+
+	%label z ;
+
+\ ----
+\ 
+\	String comparisons
+\ 
+\	These are primarily used when looking up a word in the dictionary
+\ 
+\ ----
+
+\ --	$= - String comparison
+\ 
+\	( a2 c2 a1 c1 -> f )
+\ 
+\	'f' is 0 if the string described by a1,c1 is not equal to the
+\	string described by a2,c2. 'f' is 1 if they are equal.
+
+	: $=
+
+\	State A: Compare the lengths of the strings; if the strings are
+\	equal, they must have the same length. If the lengths differ,
+\	go to stae E. Othewrise, go to state B.
+
+	%label a swap >r over - %ref 0= %elsegoto e
+
+\	State B: Arrange the stack such that the number of characters to be
+\	compared is the top of the math staack and the addresses of the two
+\	strings are next on the math stack. If the number of characters to
+\	compare is zero, we're trying to compare two null strings; go to
+\	state F since the strings are obviously equal. Otherwise, go to 
+\	state C.
+
+	%label b <r swap dup %elsegoto f
+
+\	State C: Stash the number of characters to compare on the return
+\	stack where it'll be safe for a moment. Fetch the next character
+\	from both strings and compare that character. If they are equal,
+\	go to state D. Otherwise, go to state E.
+
+	%label c >r over b@ over b@ - %ref 0= %elsegoto e
+
+\	State D: The strings are equal so far. Bump the pointers into the
+\	strings and decrement the count of characters left to compare.
+\	If we've compared all of the characters, go to state F. Otherwise,
+\	go to state B.
+
+	%label d %ref 1 + swap %ref 1 + <r %ref 1 - dup %elsegoto f %goto c
+
+\	State E: We've found a difference between the strings; they aren't
+\	equal. Clean up the math and return stacks and push a zero onto
+\	the math stack to indicate the inequality. Exit.
+
+	%label e <r drop drop drop %ref 0 %goto z
+
+\	State F: We've made it to the end of the strings without finding a
+\	difference; they must be equal. Clean up the math stack and push a
+\	1 to indicate the equality. Exit.
+
+	%label f drop drop drop %ref 1
+
+\	*** EXIT ***
+
+	%label z ;
+
+\ ----
+\ 
+\	Simple directory manipulation
+\ 
+\ ----
+
+	variable last 1 cells
+
+\ --	ID>$ - Turn a word name into a counted string description
+\ 
+\	( cfa -> a c )
+\ 
+\	Given the address of a word's CFA, this word returns the address of
+\	the word's name (a) and the length of the word's name (c).
+\ 
+\ Revisions:
+\ 
+\	06/26/96 RLI - Number of small oopses. First, the value for
+\		%flagoffset is given as a byte offset from the CFA. This
+\		value is negative, so we need to _add_ it to the CFA instead
+\		of subtracting it. Second, the SWAP was accidentally omitted
+\		from state A. Third, the SWAP in stateh C was not necessary
+\		as the address of the name is smaller than the address of
+\		the end of the string, not vice-versa.
+
+	: id>$
+
+\	State A: Given the CFA, calculate the address of the word's name.
+\	First calculate the address of the flags byte (which contains the
+\	name's length) then fetch the flags byte and strip off the flags.
+\	From that, calculate the address of the start of the word's name.
+\ 
+\	Since a name may be padded with nulls to longword align the
+\	definition, the length of the word's name given in the word's header
+\	may not be the actual length of the word's name; we have to strip
+\	any nulls that may follow the name.
+
+	%label a %flagoffset + dup dup @ 63 and - swap
+
+\	State B: Move to the previous character (the first time, this will
+\	move from the Flag byte to the last byte of the name). If the new
+\	character is a null, do it again. Otherwise, go to state C.
+
+	%label b %ref 1 - dup b@ %elsegoto b
+
+\	State C: We've found the address of the last non-null character of
+\	the name, now calculate the length of the name. Exit.
+
+	%label c over - %ref 1 +
+
+\	*** EXIT ***
+
+	%label z ;
+
+\ --	PREV - Return the address of the previous word's CFA
+\ 
+\ 	( cfa -> cfa )
+\ 
+\	Given the address of a word's CFA, this word will return either the
+\	address of the CFA of the previous word in the dictionary or zero if
+\	the given word is the first word in the dictionary.
+\ 
+\	Since this word returns zero when it encounters the first word, you
+\	cannot have a word which has its CFA at address zero. Since there
+\	are header items before the CFA, I don't think this is a problem.
+\ 
+\ Revisions:
+\ 
+\	06/25/96 RLI - Fixed state C, which was coded to assume the CFA
+\		address pointed to a 16-bit link field. Sigh.
+\	06/28/96 RLI - Modified to use cell-sized link field.
+
+	: PREV
+
+\	State A: Fetch the flag word for this word and examine the End flag.
+\	If it's set, go to state B. Otherwise, go to state C.
+
+	%label a dup %flagoffset + @ 64 and %elsegoto c
+
+\	State B: This is the first word in the dictionary. Return a zero.
+
+	%label b drop %ref 0 %goto z
+
+\	State C: This is not the first word in the dictionary. Fetch the
+\	address of the previous word and exit.
+
+	%label c dup %linkoffset + @ -
+
+\	*** EXIT ***
+
+	%label z ;
+
+\ --	VLIST - Display the names of all words in the dictionary
+\ 
+\	( -> )
+\ 
+\	This word traverses the dictionary, displaying the name of each
+\	word in the dictionary.
+\ 
+\ Revisions:
+\ 
+\	06/26/96 RLI - Added a space after each name is displayed.
+
+	: VLIST
+
+\	State A: Begin at LAST. Go to state B.
+
+	%label a last @
+
+\	State B: Look to see if we've found the end of the dictionary. If
+\	so, go to state D. Otherwise, go to state C.
+
+	%label b dup %elsegoto d
+
+\	State C: We've not found the end of the dictionary. Display this
+\	word's name and move to the previous word. Go back to state B.
+
+	%label c dup id>$ type 32 emit prev %goto b
+
+\	State D: We've found the end of the dictionary. Drop the zero from
+\	the stack and exit.
+
+	%label d drop 
+
+\	*** EXIT ***
+
+	%label z ;
+
+\ --	FIND - Find a word in the dictionary given its name
+\ 
+\	( a c -> a c cfa )
+\ 
+\	Given a counted string containing the name of a word, this word
+\	looks it up in the dictionary and returns its CFA. If the word is
+\	not in the dictionary, zero is returned for the CFA.
+
+	: FIND
+
+\	State A: Begin at the last word in the dictionary.
+
+	%label a last @ >R
+
+\	State B: Take a look at the next word we're going to examine. If 
+\	we've found the end of the dictionary, go to state D. Otherwise,
+\	go to state C.
+
+	%label b r %elsegoto d
+
+\	State C: We've not found the word yet. Compare the string with the
+\	word's name. If they matched, go to state D. Otherwise, go to state
+\	E.
+
+	%label c over over r id>$ $= %elsegoto e
+
+\	State D: We've reached the end of the search; either we've found the
+\	word (and the address of the word's CFA is on the return stack) or
+\	we've hit the end of the dictionary (and zero is on the return
+\	stack). In either case, we need to return whatever is on the
+\	return stack; pop it into the math stack and exit.
+
+	%label d <R %goto z
+
+\	State E: This word didn't match. Advance to the previous word and go
+\	to state B.
+
+	%label e <r prev >r %goto b
+
+\	*** EXIT ***
+
+	%label z ;
+
+	array digitmap
+\	DIGITMAP
+\ 
+\	M: ( -> Address of DIGITMAP's definition )
+\	R: ( -> )
+\ 
+\	DIGITMAP is a word containing a bitmap identifying characters as
+\	being digits; a bit set in DIGITMAP indicates the character will be
+\	identified as a digit.
+\ 
+\ Revisions:
+\	07/29/99 RLI - code version
+
+\	Character codes 00 through 0f; control characters.
+
+	byte 00
+	byte 00
+
+\	Character codes 01 through 1f; more control characters.
+
+	byte 00
+	byte 00
+
+\	Character codes 20 through 2f; punctuation. '.' will be accepted as
+\	a digit so it may be used as a separator for 32-bit hex numbers to make
+\	typing them easier.
+
+	byte 00
+	byte 64		( '.'
+
+\	Character codes 30 through 3f; decimal digits and more punctuation
+
+	byte 255	( digits 0 through 7
+	byte 3		( digits 8 and 9
+
+\	Character codes 40 through 4f; @ and uppercase letters
+
+	byte 126	( A through F
+	byte 0
+
+\	Character codes 50 through 5f; more uppercase letters
+
+	byte 0
+	byte 0
+
+\	Character codes 60 through 6f; lower case letters
+
+	byte 126	( a through f
+	byte 0
+
+\	Character codes 70 through 7f; more lower case letters
+
+	byte 0
+	byte 0
+	;
+
+\ --	ISDIGIT - Look to see if a character is a hexadecimal digit
+\ 
+\	( c -> f )
+\ 
+\	'f' is 0 if the character 'c' is not a hex digit. 'f' is non-zero
+\	if 'c' is a hex digit.
+\ 
+\	ISDIGIT works by turning the character into a byte offset into
+\	DIGITMAP and a bit mask for that byte. 'f' will actually be the
+\	result of ANDingthe selected by of DIGITMAP with the bitmask
+\	generated from 'c', so don't count on it being 1 if it's not 0.
+
+	: isdigit 
+	dup 3 >> 	( form offset into digit map
+	swap 7 and	( form bit number
+	%ref 1 swap << 	( form bit mask
+	swap digitmap + b@ ( Get the byte
+	and		( get the bit
+	;
+
+\ --	>NYBBLE - Convert a character to a binary hex nybble
+\ 
+\	( c -> n )
+
+	: >nybble
+
+\	State A: Look to see if we have a decimal digit or an alphabetic
+\	hext digit. If we have a decimal digit, go to state C.
+
+	%label a dup 64 and %elsegoto c
+
+\	State B: We have an alphabetix hex digit. We'll have to add 9 when
+\	we're done to get the proper value. Go to state D.
+
+	%label b 9 %goto d
+
+\	State C: We have a decimal digit. We'll have to add 0 when we're
+\	done to get the proper value. Go to state D.
+
+	%label c %ref 0
+
+\	State D: Extract the low nybble and add the fudge factor. Exit.
+
+	%label d swap 15 and +
+
+\	*** EXIT ***
+
+	%label z ;
+
+\ --	>NYBBLES - Convert a counted string to a binary integer
+\ 
+\	( a c -> n )
+\ 
+\	This word assumes every character in the string is either a valid
+\	digit or '.'; that is, it does not checking on the characters other
+\	than skipping perios.
+\ 
+\ Revisions:
+\ 
+\	06/26/96 RLI - Both state B and E were advancing the pointer into
+\		the digit string.
+
+	: >nybbles
+
+\	State A: Stuff an initial value for n (0) onto th emath stack and
+\	start the do loop stuff. Go to state B.
+
+	%label a %ref 0 swap %ref 0 %do
+
+\	State B: We have to add another digit to the value. Fetch the
+\	character to be converted and look to see if it's a '.'. If it is,
+\	go to state D to ignore the character. Otherwise, go to state C.
+
+	%label b over b@ dup 46 - %elsegoto d
+
+\	State C: We have a digit to convert. Convert the digit, make space
+\	for the new nybble (by shifting the old value over a nybble), and
+\	add the new nybble into the value. Go to state E.
+
+	%label c >nybble swap 4 << + %goto e
+
+\	State D: We need to ignore this character. Drop it from the stack
+\	and go to state E.
+
+	%label d drop
+
+\	State E: Bump the address from which we will fetch the next
+\	character. If we're not done, go to state B. Otherwise, go to
+\	state F.
+
+	%label e swap %ref 1 + swap %loop
+
+\	State F: We're done. Drop the character address from the stack and
+\	exit.
+
+	%label f swap drop
+
+\	*** EXIT ***
+
+	%label z ;
+
+
+\ --	ISNUMBER - Examine a counted string to see if it's a number
+\ 
+\	( a c -> a c f )
+\ 
+\	'f' is 0 if any character in the string is not a digit. 'f'. is a 1
+\	if all characters in the string are digits.
+
+	: isnumber
+
+\	State A: Copy the string particulars and start the do loop. Go to
+\	state B.
+
+	%label a over over %ref 0 %do
+
+\	State B: Grap the next character and see if it's a digit. If so,
+\	go to state C. Otherwise, go to state E.
+
+	%label b dup b@ isdigit %elsegoto e
+
+\	State C: We have a digit. Bump the character address. If we're
+\	done, go to staet D. Otherwise, go back to state B.
+
+	%label c %ref 1 + %loop
+
+\	State D: All characters in the string are digits. Clean the address
+\	from the stack and stack a 1. Exit.
+
+	%label d drop %ref 1 %goto z
+
+\	State E: At least one character in teh string is not a digit. Clean
+\	the do loop off the return stack, the address from the math stack,
+\	and stack a 0. Exit.
+
+	%label e <r drop <r drop drop %ref 0
+
+\	*** EXIT ***
+
+	%label z ;
+
+	$ PROMPT \r\nOK\r\n
+
+\ --	INTERPRET - The "outer text interpreter"
+\ 
+\	( -> [varies] )
+\ 
+\	This is the user interface for the system. It prompts the user and
+\	accepts a line of input. The line of input is broken up into
+\	tokens. Each token is looked up in the dictionary; if it is found,
+\	the word is executed. If the token is not found, an attempt is made
+\	to convert the word to a number. If that works, the number is left
+\	on the stack and the whole shebang starts over.
+\ 
+\ Revisions:
+\ 
+\	06/26/96 RLI - State E needs to drop the 0 returned by FIND if the
+\		word is not in the dictionary
+\	07/23/96 RLI - Assumed string variables such as prompt execute
+\		as ( -> a c )
+
+	: interpret
+
+\	State A: Prompt the user and accept a command line. Go to state B.
+
+	%label a prompt type getline
+
+\	State B: Get the next token. If there are no tokens left on the
+\	line, go to state H. Otherwise, go to state C.
+
+	%label b token dup %elsegoto h
+
+\	State C: We have a token. Look it up in the dictionary. If the 
+\	lookup succeeded, go to state D. Otherwise, go to state E.
+
+	%label c find dup %elsegoto e
+
+\	State D: There is a word by this name in the dictionary. Strip the
+\	token info from  the stack (we don't need it anymore since we've
+\	just figured out what to do about the token) and execute the word.
+\	Go back to state B.
+
+	%label d swap drop swap drop exec %goto b
+
+\	State E: There is no word by this name in the dictionary. Is the
+\	word a number? If so, go to state F. Otherwise, go to state G.
+
+	%label e drop isnumber %elsegoto g
+
+\	State F: The word is a number. Convert it to a number and go to 
+\	state B.
+
+	%label f >nybbles %goto b
+
+\	State G: The word is neither in the dictionary nor a number. It must
+\	be an error. Yell at the user and go back to state A.
+
+	%label g nl
+	type		( emit the token we couldn't fine
+	63 emit		( '?'
+	%goto a
+
+\	State H: We've found the end of the line. Drop the null token from
+\	the stack and go back to state A.
+
+	%label h drop drop %goto a
+
+\	This routine doesn't exit, but we need a ; to tell QDL to leave
+\	compile mode.
+
+	;
+
+\ ----
+\ 
+\	DO loop primitives
+\ 
+\	These words deal with executing a DO ... LOOP construct. They are
+\	required by other words in the vocabulary as well.
+\ 
+\ ----
+
+	code (loop)
+\	(LOOP) - Add one to the index of a do loop.
+\ 
+\	M: ( -> )
+\	R: ( limit, index -> limit, index+1 ) if loop loops
+\	   ( limit, index -> ) if loop exits
+\ 
+\	Assumes the return stack contains:
+\	 (sp) = index
+\	4(sp) = limit
+\ 
+\	This procedure adds one to the loop index and then decides whether
+\	the loop should be repeated or aborted. The loop is repeated if
+\	the incremented index is less than the limit.
+\ 
+\	The reference to (LOOP) is followed by a cell containing the relative
+\	offset to the top of the loop.
+\ 
+\	This code references a label in (BRANCH) called pBranch.
+\ 
+\ Revisions:
+\	07/30/99 RLI - code version
+
+\	Update the index.
+
+	RP@ @ 1 + RP@ ! ?
+
+\	Fetch the limit and index
+
+	RP@ @ CELLSIZE RP+ @	( -> index, limit )
+
+\	If the index is less than the limit, go to pBranch.
+
+	<GO pBranch ?		( index, limit -> )
+
+\	The loop is exiting. We need to pop two cells (the limit and index)
+\	from the return stack.
+
+	CELLSIZE DUP + RP+ RP! ?
+
+\	We also have to skip the offset to the top of the loop, which 
+\	immediately follows the reference to (LOOP) in the FORTH code.
+\	To do this, we bump IP by a cell.
+
+	IP@ CELLSIZE + IP! ?
+
+	NEXT ? ;
+	code (+loop)
+\	(+LOOP) - Add a specified amount to the index of a do loop.
+\ 
+\	M: ( update -> )
+\	R: ( limit, index -> limit, index + update ) if the loop loops
+\	R: ( limit, index -> ) if the loop exits
+\ 
+\	Assumes the return stack contains:
+\	 (sp) = index
+\	4(sp) = limit
+\ 
+\	This procedure adds the value on top of the math stack to the loop
+\	index and then does the rest of (LOOP); it's like (LOOP) except you
+\	can specify an increment other than one.
+\ 
+\	The increment is discarded from the math stack.
+\ 
+\	Like (LOOP), (+LOOP) is followed by a cell  containing the relative
+\	offset to the top of the loop. Also like (LOOP), the branch is
+\	performed by entering (BRANCH) at pBranch.
+\ 
+\ Revisions:
+\	07/30/99 RLI - code version.
+
+\	Update the index, which is on the top of the return stack.
+
+	RP@ @		( -> index )
+	MP@ @ +		( index -> index+update )
+	RP@ ! ?		( index+update -> )
+
+\	Drop the update value from the math stack.
+
+	CELLSIZE MP+ MP! ?
+
+\	If the index is still less than the limit, branch to the top of
+\	the loop.
+
+	RP@ @		( -> index )
+	CELLSIZE RP+ @	( index -> index, limit )
+	<GO pBranch ?	( index, limit -> )
+
+\	Otherwise, we need to exit the loop. Pop the limit and the index
+\	from the return stack.
+
+	CELLSIZE DUP + RP+ RP! ?
+
+\	We also need to skip the branch offset, which we are not using this
+\	time.
+
+	IP@ CELLSIZE + IP! ?
+
+	NEXT ? ;
+
+\ --	(DO) - Initialize a do loop
+\ 
+\	( limit initial -- [pushed to return stack )
+\ 
+\	This procedure is the run-time initialization of a do loop; it takes
+\	the limit and initial value from the math stack and pushes them on
+\	the return stack in the order required by (LOOP) and (+LOOP).
+\ 
+\ Revisions:
+\ 
+\	06/24/96 RLI - Oops! Before I can push things on the return stack,
+\		I need to make certain I understand what I'm doing with
+\		the return address! Sigh.
+
+	: (do)
+	swap		( limit initial -> initial limit
+	<r		( grab the return address
+	swap >r		( push limit to return stack
+	swap >r		( push initial to return stack 
+	>r		( push return address to return stack
+	;		( use return address...
+
+\ --	(DP@) - Fetch the initial value for the dictionary pointer
+\ 
+\	M: ( -> InitialDP )
+\	R: ( -> )
+\ 
+\ Revisions:
+
+	code (DP@)
+\	Make space on the math stack for InitialDP
+
+	CELLSIZE MP- MP! ?
+
+\	Copy InitialDP into the space on the math stack
+
+	InitialDP@ MP@ ! ?
+
+	NEXT ? ;
+
+\ --	(LAST@) - Fetch the initial value for LAST
+\ 
+\	M: ( -> InitialLAST )
+\	R: ( -> )
+\ 
+\ Revisions:
+
+	code (LAST@)
+\	Make space on the math stack for InitialLAST
+
+	cellsize mp- mp! ?
+
+\	Copy InitialLAST into the space on the math stack
+
+	InitialLAST@ mp@ ! ?
+
+	next ? ;
+
+\ --	Messages to be displayed by IDENTIFY
+
+	$ IDMSG1 THIRD V0.0 CellSize 
+	$ IDMSG2 WordSize 
+	$ IDMSG3 Bits 
+
+\ --	IDENTIFY - Display info about this system
+\ 
+\ 	( -- )
+\ 
+\ Revisions:
+
+	: identify
+	  idmsg1 type %cellsize . idmsg2 type %wordsize .
+	  idmsg3 type %bits . nl ;
+
+\ --	(COLD) - Perform final power-on initialization
+\ 
+\ 	This word performs initialization that should be done once at
+\	power-on. It is assumed that the low-level initialization code
+\	has initialized the UART and the various low-level registers
+\	(NEXT, InitialRP, InitialMP, etc.) needed by the system. This
+\	word initializes the math and return stacks, identifies the
+\	system, and then does an ABORT.
+\ 
+\ Revisions:
+
+	: (cold)
+	  mp! rp!			( Initialize stacks
+	  (dp@) dp !			( Initialize directory pointer
+	  (last@) last !		( Initialize LAST
+	  identify			( Display info about this system
+	  abort ;
+
+\ -----
+\ 
+\	ABORT
+\ 
+\ -----
+
+	: abort mp! rp! interpret ;

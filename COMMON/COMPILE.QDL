@@ -1,0 +1,732 @@
+\ ----
+\ 
+\	Dictionary manipulation primitives
+\ 
+\	These words do the very basic work of adding things to the
+\	dictionary.
+\ 
+\ Revisions:	04/21/97 RLI - Changed flag byte to be a flag longword.
+\ 
+\ 		05/11/01 RLI - Fixed bogus blank line comments.
+\ 
+\ ----
+
+	variable dp 1 cells
+
+	code (olit)
+\	(OLIT) - Extend and relocate a relative literal
+\ 
+\	M: ( -> literal )
+\	R: ( -> )
+\ 
+\	This word is used to create references to words in the code which, at
+\	execution, will result in the address of the word being pushed on the
+\	stack.
+\ 
+\	The reference to (OLIT) is followed by a relative offset that is
+\	relocated into the target address referenced by the offset and
+\	pushed on the stack.
+\ 
+\ Revisions:
+\	07/29/99 RLI - code version
+
+\	Make space on the math stack for the literal
+
+	CELLSIZE MP- MP! ?
+
+\	Fetch the offset and relocate it.
+
+	IP@ @ IP@ +		( -> Address to which offset points )
+
+\	Store the offset on the math stack
+
+	MP@ ! ?			( Address -> )
+
+\	Advance IP over the literal and continue on.
+
+	IP@ CELLSIZE + IP! ?
+	NEXT ? ;
+
+\ --	O@ - Fetch the value of a relative offset
+\ 
+\	( a -> b )
+\ 
+\	The word address by 'a' is fetched, sign-extended, and added
+\	to 'a'. This converts the word addressed by 'a' to the absolute
+\	address 'b'.
+\ 
+\ Revisions:
+\ 
+\	06/28/96 RLI - Modified to use cell-sized offset.
+
+	: o@ dup @ + ;
+
+\ --	O! - Store a relative offset
+\ 
+\ 	( target address -> )
+\ 
+\	This word stores a 16-bit relative offset from address to target
+\	at address.
+\ 
+\ Revisions:
+\ 
+\	06/28/96 RLI - Modified to use cell-size offset.
+
+	: O! swap over - swap ! ;
+
+\ --	B, - Append a byte to the dictionary
+\ 
+\	( a -> )
+\ 
+\	a is stored in the first unused byte after the dictionary and
+\	the dictionary pointer is advanced to the next byte; this makes
+\	a the last byte in the dictionary.
+
+	: b, dp @ b! dp ++ ;
+
+\ --	W, - Append a word to the dictionary
+\ 
+\	( a -> )
+\ 
+\	a is stored in the first unused word after the dictionary and
+\	the dictionary pointer is advanced to the next word; this makes
+\	a the last word in the dictionary.
+
+	: w, dp @ w! dp @ %wordsize + dp ! ;
+
+\ --	, - Append a longword to the dictionary
+\ 
+\	( a -> )
+\ 
+\	a is stored in the first longword after the dictionary and
+\	the dictionary pointer is advanced to the next longword; this makes
+\	a the last longword in the dictionary
+
+	: , dp @ ! dp @ %cellsize + dp ! ;
+
+\ --	O, - Append a relative offset to the dictionary
+\ 
+\ 	( a -> )
+\ 
+\	The difference between the end of the dictionary and a is stored
+\	in the first unused longword after the dictionary. The dictionary
+\	pointer is advanced past this longword, making a-DP the last
+\	longword in the dictionary.
+
+	: o, dp @ - , ;
+
+\ --	$, - Append a counted string to the dictionary
+\ 
+\	( addr count -> )
+\ 
+\ This word appends a counted string to the dictionary. Each byte
+\ of the string is appended to the dictionary using B,. After the
+\ string is copied, it is padded with nulls until the name ends on an
+\ even longword boundary. At that even longword boundary, the length byte
+\ for the name is appended; the rest of the word header consists of one byte
+\ for the link and a word for the CFA, so when the header is complete the
+\ definition of the word will be longword aligned.
+\ 
+\ NOTE: The caller is responsible for ensuring the string is not longer
+\ than 63 characters.
+\ 
+\ Revisions:
+\ 
+\	07/08/96 RLI - The flags byte now requires a longword so that
+\		code remains longword aligned with longword offsets.
+
+	: $,
+
+\ *** ENTRY ***
+\ 
+\ M: Address of string, length of string
+\ R: Return address
+
+\ State A: Start up a do loop for the length of the string. Fetch the
+\ directory pointer so that we can use it at the end to calculate the
+\ length of the name. Go to state B.
+\  
+\ M: Original DP, address of string
+\ R: REturn address, lmit, index
+
+	%label a >r dp @ swap <r 0 %do
+
+\ State B: Append the next byte from the string to the dictionary and
+\ bump the pointer into the string. Loop until done.
+\ 
+\ M: Original DP, Address of byte after the end of the string
+\ R: Return address
+
+	%label b dup b@ b, %ref 1 + %loop
+
+\ State C: We're done fetching bytes from the string, so drop the pointer
+\ into the string from the stack. Get the current dictionary pointer so we
+\ can test to see if it's aligned. Go to state D.
+
+	%label c drop dp @
+
+\ State D: Test the low-order two bits of the dictionary pointer to see if
+\ we've longword aligned it. If so, go to state F. Otherwise, go to state
+\ E.
+\ 
+\ M: Original DP, Low-order two bits of DP
+
+	%label d dup 3 and %elsegoto f
+
+\ State E: DP is not yet longword alined. Append a null to the name and
+\ bump our copy of DP's low-order bits. Go to state D.
+\ 
+\ M: Original DP, (Low-order bits of DP) + 1
+
+	%label e %ref 0 b, %ref 1 + %goto d
+
+\ State F: We've longword aligned the dictionary. Drop the low-order two
+\ bits of DP since we don't need them anymore. Figure out how long the
+\ string is and deposit the length byte. Exit.
+\ 
+\ M:
+
+	%label f drop dp @ swap - ,
+
+\ *** EXIT ***
+\ 
+\ M:
+\ R:
+
+	%label z ;
+
+\ --	ALLOT - Allocate a chunk of memory into a word
+\ 
+\	( bytes -> )
+\ 
+\	This word allocates a chunk of memory onto the end of the last
+\	word in the dictionary. It does this by simply advancing the
+\	dictionary pointer past the memory.
+
+	: allot dp @ + dp ! ;
+
+\ --	CREATE - Create a new word
+\ 
+\	( -> )
+\ 
+\	This word appends the bulk of a header to the dictionary. It creates
+\	the name, flag, and link bytes and points LAST at the new header.
+\	When done, DP points at the CFA for the new word; the caller must
+\	fill in the CFA with a suitable O, before storing the definition of
+\	the word.
+\ 
+\	CREATE obtains the name of the word from the input buffer; it calls
+\	TOKEN to get the next word from the input buffer. If there are
+\	no tokens left in the input buffer, CREATE will display an error
+\	message and ABORT.
+\ 
+\	CREATE may also ABORT if the name is longer than 63 characters (the
+\	longest name that may be supported by the Flags byte).
+
+	: create 
+
+\ *** ENTRY ***
+\ 
+\ M:
+\ R: Return address
+
+\ State A: Grab the next token from the input buffer. If there is no next
+\ token (we're at the end of the line), go to state E. Otherwise, go to
+\ state B.
+\ 
+\ M: Address of token, length of token
+
+	%label a token dup %elsegoto e
+
+\ State B: Make certain the name isn't too long. If the name is too
+\ long, go to state F. Otherwise, go to state C.
+\ 
+\ M: Address of token, length of token
+
+	%label b dup 64 < %elsegoto f
+
+\ State C: We have a reasonable token. Toss it on the end of the dictionary.
+\ Compute and store the link field. Go to state G.
+\ 
+\ M:
+
+	%label c $, dp @ %cellsize + last @ - , %goto g
+
+\ State D: (deleted)
+
+\ State E: There is no token on the line following the word which decided
+\ to create a new word. In other words, we don't have a name for the new
+\ word. Complain and ABORT.
+\ 
+\ M: Doesn't matter because we're ABORTing.
+
+	%label e name? type abort
+
+\ State F: The token is too long. Display an error message and ABORT.
+\ 
+\ M: Doesn't matter because we're ABORTing.
+
+	%label f len? type abort
+
+\ State G: The header is cool. Update LAST to point at the new header
+\ and exit.
+
+	%label g dp @ last !
+
+\ **** EXIT ****
+\ 
+\ M:
+\ R:
+
+	%label z ;
+
+
+\ --	NAME? - This word contains an error message displayed by CREATE
+\	if there is no name for the new word in the input buffer.
+
+	$ name? \r\nName?\r\n
+
+\ --	LEN? - This word contains an error message displayed by CREATE
+\	if the name for the new word is too long.
+
+	$ len? \r\nLen?\r\n
+
+\ --	VARIABLE - Create a variable
+\ 
+\ 	( a -> )
+\ 
+\	This word creates a variable with a specified name. The value on
+\	top of the math stack is stored in the variable after the header
+\	is created. The name of the variable is taken from the input buffer;
+\	i.e., it's the word of input following VARIABLE.
+
+	: variable 
+
+\	First, create the header
+
+	create
+
+\	Point the CFA at (VAR)
+
+	(olit) (var) o,
+
+\	Store the value into the new variable
+
+	, ;
+
+\ --	CONSTANT - Create a constant
+\ 
+\ 	( a -> )
+\ 
+\	This word creates a constant with a specified name. The value on
+\	top of the math stack is stored in the constant after the header
+\	is created. The name of the constant is taken from the input buffer;
+\	i.e., it's the word of input following CONSTANT.
+
+	: constant 
+
+\	First, create the header
+
+	create
+
+\	Point the CFA at (CONSTANT)
+
+	(olit) (constant) o,
+
+\	Store the value into the new variable
+
+	, ;
+
+\ --	CODE - Create a machine code word
+\ 
+\	( -> )
+\ 
+\	This word creates a word containing machine code. It creates a
+\	header whose CFA points to the word's definition; i.e., it
+\	creates a header for which the word itself contains the machine
+\	code which knows how to execute the word. The code executed by
+\	the word must be appended to the header using the various ',' words.
+\ 
+\	The name of the new word is taken from the input buffer; i.e., it
+\	follows CODE on the input line.
+\ 
+\ Revisions:
+\ 	08/09/96 RLI - Removed assumption that CFA is a relative offset.
+\	08/27/96 RLI - Fixed the 08/09 fix.
+
+	: code create dp @ o, ;
+
+
+\ --	$ - Compile a string into a word
+\ 
+\	( -> )
+\ 
+\	This word compiles a string into a word. The token following $ on
+\	the input line is used as the name of the word. The rest of the
+\	input line is copied into the dictionary following the header and
+\	string length byte.
+
+	: $
+
+\	Create the word and point its CFA at ($)
+
+	create (olit) ($) o,
+
+\	Calculate the length of the remaining line. This is given by 
+\	searching for the null terminating the input buffer.
+
+	inbuf in @ + %ref 0
+
+\	Examine the character. If it's a null, we're done. Otherwise,
+\	we need to bump the address and look at the next character.
+
+	%label a nextchar %elsegoto b
+
+\	The character is not null. Count it and repeat.
+
+	%ref 1 + %goto a
+
+\	The character is a null; we've found the string length. Append
+\	the string length to the dictionary followed by the string.
+
+	%label b dup b, $,
+
+\	Note that we'll have a couple of extra bytes at the end (padding
+\	to longword boundary followed by a flag byte, but that's OK.
+
+	;
+
+
+\ ----
+\ 
+\	: and support for :
+\ 
+\ ----
+
+	variable :done 1 cells
+	variable :dp 1 cells
+	variable :last 1 cells
+	variable :mp 1 cells
+
+\ --	; - Terminat a : definition
+\ 
+\	( -> )
+\ 
+\	This word compiles (;) into the dictionary then sets :DONE to
+\	a non-zero value so : knows to exit.
+
+	immediate ; (olit) (;) o, %ref 1 :done ! ;
+
+
+\ --	:ABORT - Abort a : definition
+\ 
+\	( -> )
+\ 
+\	This word is used to abort while compiling a : definition. It
+\	restores DP and LAST to their original values before ABORTing.
+
+	: :abort :dp @ dp ! :last @ last ! abort ;
+
+\ --	: - Compile a FORTH word into the dictionary
+\ 
+\	( -> )
+\ 
+\	This word adds a new executable FORTH word to the dictionary; it is
+\	remarkably similar to INTERPRET, with a few exceptions:
+\ 
+\		- Non-immedate words are compiled into the dictionary
+\		  instead of being executed
+\ 
+\		- Literals are compiled into the dictionary instead
+\		  of being left on the math stack.
+
+	: :
+
+\ *** ENTRY ***
+\ 
+\ M:
+\ R: Return address
+
+\ State A: Initialize :DP and :LAST so we can undo the changes we make 
+\ to the dictionary if necessary. Initialize :DONE so we'll keep fetching
+\ lines until ; is executed. Initialize :MP so we can do a smidgen of
+\ error checking at ; time. Create the name and compile its CFA to point
+\ at (:). Go to state B.
+\ 
+\ M:
+
+	%label a %ref 0 :done !		( Initialize :DONE
+	dp @ :dp !			( Initialize :DP
+	last @ :last !			( Initialize :LAST
+	mp@ :mp !			( Initialize :MP
+	create				( Create the word
+	(olit) (:) o,			( point its CFA at (:)
+
+\ State B: Fetch the next token from the input buffer buffer. If there is
+\ no next token, go to state H. Otheriwse, go to state C. 
+\ 
+\ Note that since we may have executed an immediate word, the math stack
+\ depth is indeterminate starting here.
+\ 
+\ M: ?, Token address, Token length
+
+	%label b token dup %elsegoto h
+
+\ State C: We have a token. Look it up in the dictionary. If it's not
+\ there, go to state I. Otherwise, go to state D.
+\ 
+\ M: ?, Token address, Token count, CFA of word named by Token
+
+	%label c find dup %elsegoto i
+
+\ State D: We've found the word, so we can toss the token address and
+\ byte count. Fetch the flag byte and see if it's an immediate word.
+\ If it's an immediate word, go to state E. Otherwise, go to state L.
+\ 
+\ M: ?, CFA
+
+	%label d swap drop swap drop	( Drop token address and byte count
+	dup %flagoffset + @		( Fetch the flags word
+	128 and %elsegoto l		( Test the immediate flag
+
+\ State E: We have an immediate word. Execute the word and look to 
+\ see if we're done compiling. If we are done compiling, go to state F.
+\ Otherwise, go to state B.
+\ 
+\ M: ?
+
+	%label e exec :done @ %elsegoto b
+
+\ State F: We're done compiling. We need to make certain everything the
+\ immediate words left on the math stack has been popped off. Fetch the
+\ math stack pointer and compare it to the math stack pointer we had
+\ on entry. If they match, we don't have any leftover boogers on the
+\ math stack; exit. Otherwise, go to state G.
+\ 
+\ M:		( if we exit )
+\ M: ?		( if we go to state G)
+
+	%label f mp@ :mp @ - %elsegoto z
+
+\ State G: Argh! We've boogerd up the math stack and not wiped it off.
+\ Display an error message and :ABORT.
+\ 
+\ M: Doesn't matter since we're :ABORTing.
+
+	%label g (olit) : id>$ type	( Tell the user which control
+					( structure is complaining
+	nest? type :abort
+
+\ State H: We've hit the end of the line before encountering ;. Clean the
+\ token info off the math stack and get another line of input. Go back
+\ to state B.
+\ 
+\ M: ?
+
+	%label h drop drop		( drop token address and byte count
+	getline %goto b
+
+\ State I: We could not find the token in the dictionary. This may
+\ be a number. If so, go to state J. Otherwise, go to state K.
+\ 
+\ M: ?, Token address, Token count
+
+	%label i drop 			( drop CFA, which is known to be zero
+	isnumber %elsegoto k
+
+\ State J: We have a literal. Convert it to binary and compile it into the
+\ dictionary. Go to state B.
+
+	%label j >nybbles		( Convert it to binary
+	(olit) (lit) o,			( Compile reference to (LIT)
+	,				( Compile the literal
+	%goto b
+
+\ State K: Our token is bogus; it isn't a number and it isn't in the 
+\ dictionary. Display tthe token so the user knows why were :ABORTing
+\ then :ABORT.
+\ 
+\ M: Doesn't matter since we're :ABORTing.
+
+	%label k type 63 emit :abort
+
+\ State L: We've found the token in the dictionary and it is not an
+\ immediate word. Compile a reference to the word into the dictionary
+\ and go to state B.
+\ 
+\ M: ?
+
+	%label l o, %goto b
+
+\ *** EXIT ***
+\ 
+\ M:
+\ R:
+
+	%label z ;
+
+\ --	NEST? - This word contains the error message displayed by :
+\	when it believes the control structure nesting is bad. It may
+\	also be displayed by other control structure words.
+
+	$ nest?  Nest?\r\n
+
+\ --	IMMEDIATE - Flags the last word in the dictionary as immediate.
+\ 
+\	( -> )
+\ 
+\	This word sets the IMMEDIATE bit in the flags byte of the
+\	word pointed to by LAST.
+
+	: immediate last @ %flagoffset + dup @ 128 or swap b! ;
+
+\ ----
+\ 
+\	DO loops
+\ 
+\ ----
+
+\ --	DO - Compile the top of a do loop
+\ 
+\	( -> Top of loop, 1 )
+\ 
+\	This word compiles a (DO) into the dictionary and then leaves a
+\	booger the math stack containing the address of the byte after
+\	(DO) to allow LOOP and +LOOP to find the top of the loop.
+
+	immediate do (olit) (do) o, dp @ %ref 1 ;
+
+\ --	LOOP - Compile the bottom of a do loop
+\ 
+\	( Address of top of loop, Booger type -> )
+\ 
+\	This word coppiles a (LOOP) into the dictionary followed by the
+\	offset to the top of the do loop. The top of the do loop is left
+\	as a booger on the math stack by DO.
+\ 
+\	The booger is check to ensure that it's a DO-booger. If the top
+\	of the math stack is not a DO-booger, "Nest?" is printed and
+\	compilation is :ABORTed.
+
+	immediate loop (olit) (loop) o,	( compile a referenct to (LOOP)
+	%ref 1 - %if			( Make certain we have a DO-booger
+	(olit) loop id>$ type nest? type :abort
+					( It's not a do-booger. Complain.
+	%else o, %endif ;		( It's a do-booger. Finish.
+
+\ --	+LOOP - Compile the bottom of a do loop
+\ 
+\	( Address of top of loop, Booger type -> )
+\ 
+\	This word coppiles a (+LOOP) into the dictionary followed by the
+\	offset to the top of the do loop. The top of the do loop is left
+\	as a booger on the math stack by DO.
+\ 
+\	The booger is check to ensure that it's a DO-booger. If the top
+\	of the math stack is not a DO-booger, "Nest?" is printed and
+\	compilation is :ABORTed.
+
+	immediate +loop (olit) (+loop) o, ( compile a referenct to (LOOP)
+	%ref 1 - %if			( Make certain we have a DO-booger
+	(olit) +loop id>$ type nest? type :abort
+					( It's not a do-booger. Complain.
+	%else o, %endif ;		( It's a do-booger. Finish.
+
+\ ----
+\ 
+\     REPEAT loops
+\ 
+\ ----
+
+\ --	REPEAT - Compile the top of a REPEAT/UNTIL loop.
+\ 
+\	( -> Address of the top of the loop, 2 )
+\ 
+\	This word puts a REPEAT-booger on the math stack for later
+\	reference by UNTIL. The REPEAT-booger contains the 
+\	dictionary pointer when REPEAT was executed; i.e., it contains
+\	the address of the top of the loop.
+
+	immediate repeat dp @ 2 ;
+
+\ --	UNTIL - Compile to bottom of a REPEAT/UNTIL loop.
+\ 
+\	( Address of top loop, type of booger -> )
+\ 
+\	This word compiles a (0BRANCH) at the end of the loop which
+\	will branch back to the top of the loop. Thus, the loop is
+\	repeated until the top of the math stack at the bottom of
+\	the loop is non-zero.
+
+	immediate until (olit) (0branch) o, ( Compile a reference to (0BRANCH)
+	2 - %if				( Make certain we have a REPEAT-booger
+	(olit) until id>$ type nest? type :abort
+					( It's not a REPEAT-booger. Complain.
+	%else o, %endif ;		( It's a REPEAT-booger. Finish.
+
+\ ----
+\ 
+\	IF
+\ 
+\ ----
+
+\ --	IF - Compile a conditional branch
+\ 
+\	( -> Address of offset in conditional branch, 3 )
+\ 
+\	 This word compiles a (0BRANCH) into the code, leaving space
+\	for the offset of the branch following it. The offset will be
+\	filled in later by either ELSE or ENDIF. Since ELSE or ENDIF
+\	need to know where the offset should be stored, the address of
+\	the offset is left on the math stack as an IF-booger.
+
+	immediate if (olit) (0branch) o, ( Compile a reference to (0BRANCH)
+	dp @				( Stash address of offset on stack
+	dup o,				( Leave space for offset
+	3 ;				( Mark it as an IF-booger
+
+\ --	ELSE - Compile the false branch of an IF
+\ 
+\	( Address of IF branch, type of booger -> Address of ELSE branch, 3 )
+\ 
+\	This word terminates the true branch of an IF and starts the false
+\	branch.
+\ 
+\	An unconditional branch is compiled following the true section.
+\	This will be filled in later by ENDIF. The booger left behind by IF
+\	is then filled in to point to the start of the false code. The
+\	IF-booger left by IF is replaced by an IF-booger for the branch
+\	at the end of the true section.
+
+	immediate else (olit) (branch) o, ( Compile a reference to (BRANCH)
+
+\	Now we need to be a bit careful. We have to stash away the address
+\	of teh offset portion of the branch we just compiled before we
+\	can fill in the IF-booger left behind by IF (we want the original
+\	IF-boogerto branch _after_ the relative offset, not to it).
+\ 
+\	However, we also don't want to put dependencies in this code
+\	about the size of a relative offset. So what we're going to do
+\	is fetch DP and stash it on the return stack while we fill in the
+\	original IF-booger. Then we can use the return stack to generate
+\	the new IF-booger.
+
+	dp @ dup >r			( Save DP on return stack
+	o,				( Reserve space for the offset
+	endif				( Fill in the original IF-booger
+	<r 3 ;				( Build the new IF-booger
+
+\ --	ENDIF - Complete the compilation of an IF construct
+\ 
+\	( Address of branch offset to be filled in, type of booger -> )
+\ 
+\	This word fills in the open branch offset left behind by an
+\	IF or an ELSE. The offset from the original branch is written to
+\	point to the current DP, which is just past the end of the IF.
+
+	immediate endif
+	3 - %if				( Make sure we have an IF-booger
+	(olit) if id>$ type nest? type :abort
+					( It's not an if; complain and die
+	%else dp @ swap o! %endif ;	( Fill in the IF-booger
+

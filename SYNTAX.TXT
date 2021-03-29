@@ -1,0 +1,1680 @@
+--------------------------------------------------------------------------
+
+Since THIRD follows no extant FORTH standards, you'll need to
+spend some quality time with this glossary to make use of it.
+
+--------------------------------------------------------------------------
+
+                    !                     M: ( Value, Address -> )   core
+                                          R: ( -> )
+
+! stores a cell from the math stack into memory at a specified address. It
+pops the address and the value from the math stack then stores the value
+in memory at the address.
+
+--------------------------------------------------------------------------
+
+   M: ( -> )
+ $ R: ( -> )                                                    compiling
+   INBUF is completely consumed, which implies that IN
+   is updated. DP is updated.
+
+$ compiles a counted string into the dictionary. A new word is created to
+contain the string; the name of this word is taken from the next token in
+INBUF. The contents of the string are taken from the remainder of
+INBUF.
+
+$ uses CREATE to create the dictionary entry for the word. The code
+field of the new word is pointed at ($).
+
+Because GETLINE only stores printing characters and spaces in
+INBUF, it is not possible to include control characters in a counted
+string created by $.
+
+--------------------------------------------------------------------------
+
+                                       M: ( Address, Count -> )
+                  $,                   R: ( -> )                compiling
+                                       DP is updated.
+
+$, appends a counted string to the dictionary. Each byte of the string is
+appended to the dictionary using B,. After the string is copied, it is
+padded with bytes of zero until the name ends on an even cell boundary. At
+that even cell boundary, a cell containing the length of the string
+(including the zeros appended to reach alignment) is appended to the
+dictionary. The address and count of the string are popped from the math
+stack.
+
+$, is used to create the name portion of a dictionary entry. A dictionary
+entry is referred to by its code field address, which comes after the
+word's name in the dictionary. Placing the length of the string at the end
+of the name allows the beginning of the name to be quickly and easily
+found by looking backwards a fixed amount from the code field address.
+
+Names in the dictionary are limited to being at most 63 characters long to
+allow space for the IMMEDIATE flag as well as a bit to mark the first
+word in the dictionary; it is the need for these two bits in addition to
+the name length which constrains the byte size to be at least eight bits.
+$, does not enforce this limitation; it assumes the caller has verified
+the length of the string.
+
+--------------------------------------------------------------------------
+
+                   ($)                    M: ( -> Address, Length )  core
+                                          R: ( -> )
+
+($) knows how to execute definitions created by $. Such definitions
+contain a counted string of bytes usually intended for display via
+TYPE. ($) places the address of the first byte in the string and the
+number of bytes contained in the string on the math stack.
+
+--------------------------------------------------------------------------
+
+    M: ( Address 1, Count 1, Address 2, Count 2 -> 1 ) if the
+ $= strings are equal.                                               core
+    M: ( Address 1, Count 1, Address 2, Count 2 -> 0 ) otherwise
+    R: ( -> )
+
+$= compares two counted strings, pushing a flag which indicates whether
+they are identical. The addresses and counts of the strings to be compared
+are popped from the math stack.
+
+To be considered identical, the counted strings must be the same length
+and each byte in the counted string must have the same value.
+
+--------------------------------------------------------------------------
+
+           M: ( Increment -> )
+  (+LOOP)  R: ( Limit, Index -> ) if the loop exits                  core
+           R: ( Limit, Index -> Limit, Index + Increment ) otherwise
+
+(+LOOP) knows how to execute the bottom of a do loop which increments
+its index by the amount specified on the math stack. The amount by which
+the index is to be incremented is popped from the math stack and added to
+the index. If the updated index is less than the limit, the loop needs to
+be repeated; (+LOOP) branches to the top of the loop. Otherwise, the loop
+needs to be exited; (+LOOP) pops the limit and index from the return stack
+and does not branch.
+
+The reference to (+LOOP) is followed by a cell containing the offset to
+the top of the loop. If the loop is repeated, (+LOOP) fetches this offset
+and uses it to update the IP. If the loop is existed, (+LOOP) advances the
+IP past the offset.
+
+--------------------------------------------------------------------------
+
+                   (:)                    M: ( -> )                  core
+                                          R: ( -> IP )
+
+(:) knows how to execute definitions which have been created by :.
+Such definitions contain a list of offsets to other THIRD words.
+
+(:) moves the IP to the return stack, loads the address of the current
+word's definition into IP, and executes (NEXT).
+
+--------------------------------------------------------------------------
+
+                   (;)                    M: ( -> )                  core
+                                          R: ( Return address -> )
+
+(;) used by : to end a definition; it causes execution to return to
+the THIRD word which called the word containing the reference to (;). It
+pops the IP from the return stack and enters (NEXT).
+
+--------------------------------------------------------------------------
+
+                (0BRANCH)                 M: ( Flag -> )             core
+                                          R: ( -> )
+
+(0BRANCH) is used by compiling words such as IF and UNTIL to
+create a conditional jump. It examines the cell on top of the math stack
+to determine whether or not the branch should be taken. As with
+(BRANCH), the reference to (0BRANCH) is followed by a cell containing
+an offset to the address to which the system should branch. If the flag is
+non-zero, this branch is taken by entering (BRANCH). If the flag is
+zero, IP is advanced beyond the branch and (NEXT) is entered to
+continue straight-line code. In both cases, the flag is dropped from the
+math stack.
+
+--------------------------------------------------------------------------
+
+                 (BRANCH)                 M: ( -> )                  core
+                                          R: ( -> )
+
+(BRANCH) is used by compiling words such as IF to create a jump. The
+reference to (BRANCH) is followed by a cell containing an offset to the
+address to which the system should branch. (BRANCH) fetches this offset,
+calculates the address to which the offset refers, stores the resulting
+address in IP, then enters (NEXT) to begin execution at that address.
+
+--------------------------------------------------------------------------
+
+                  (COLD)                  M: Initialized             core
+                                          R: Initialized
+
+(COLD) performs intialization that should be done once at system startup.
+It is assumed that the system-specific initialization code has intialized
+the console and the various StupidCode registers needed by the system.
+(COLD) initializes the math and return stacks, the dictionary pointer,
+LAST, displays the sign-on banner, and then executes ABORT.
+
+Because (COLD) initializes DP and LAST, executing (COLD) causes
+the system to forget any user-created definitions which were stored in the
+dictionary.
+
+--------------------------------------------------------------------------
+
+        (CONSTANT)        M: ( -> Value )                            core
+                          R: ( -> )
+
+(CONSTANT) knows how to execute THIRD words created by CONSTANT. It
+copies the first cell of the THIRD word's definition to the math stack.
+
+--------------------------------------------------------------------------
+
+                 (DO)                 M: ( Limit, Initial index -> ) core
+                                      R: ( -> Limit, Initial index )
+
+(DO) does the work necessary to enter a do loop. It copies the limit
+and initial value of the index to the return stack, where they can be
+found by (LOOP) and/or (+LOOP) at the bottom of the loop.
+
+--------------------------------------------------------------------------
+
+                  (DP@)                   MP: ( -> InitialDP )
+                                          RP: ( -> )
+
+(DP@) pushes a copy of the dictionary pointer's initial value onto the
+math stack. This is the address of the first byte of system memory which
+will be used to contain user-created definitions. (DP@) is used during
+system initialization to initialize the dictionary pointer.
+
+(DP@) gets the initial dictionary pointer from the StupidCode register
+InitialDP (see InitialDP@). It is the responsibility of
+system-specific code to initialize the InitialDP register before entering
+THIRD.
+
+--------------------------------------------------------------------------
+
+                 (LAST@)                  M: ( -> InitialLAST )      core
+                                          R: ( -> )
+
+(LAST@) pushes a copy of the initial value for LAST onto the math
+stack. This is the code field address of the last word which has been
+pre-compiled into the THIRD dictionary. (LAST@) is used during system
+initialization to initialize LAST.
+
+(LAST@) gets the initial LAST pointer from the StupidCode register
+InitialLAST (see InitialLAST@). It is the responsibility of
+system-specific code to initialize the InitialLAST register before
+entering THIRD.
+
+--------------------------------------------------------------------------
+
+                  (LIT)                   M: ( -> Literal )          core
+                                          R: ( -> )
+
+(LIT) is used by : to create code which pushes a constant value onto
+the math stack. The reference to (LIT) is followed by a cell containing
+the constant to be pushed onto the math stack. (LIT) fetches the constant,
+pushes it onto the math stack, and advances IP past the constant.
+
+--------------------------------------------------------------------------
+
+                     M: ( -> )
+       (LOOP)        R: ( Limit, Index -> ) if the loop exits        core
+                     R: ( Limit, Index -> Limit, Index+1 ) otherwise
+
+(LOOP) knows how to execute the bottom of a do loop which increments its
+index by one. It increments the index for the loop and compares the index
+to the limit. If the index is less than the limit, the loop needs to be
+repeated; (LOOP) branches to the top of the loop. Otherwise, the loop
+needs to be exited; (LOOP) pops the limit and index from the return stack
+and does not branch.
+
+The reference to (LOOP) is followed by a cell containing the offset to the
+top of the loop. If the loop is repeated, (LOOP) fetches this offset and
+uses it to update IP. If the loop is exited, (LOOP) advances IP past the
+the offset.
+
+--------------------------------------------------------------------------
+
+         (NEXT)          M: ( -> )                                   core
+                         R: ( -> )
+
+(NEXT) is the inner interpreter for the system. It contains a chunk of
+CODE which knows how to fetch and execute the next THIRD word. It is
+called implicitly by CODE words and would not normally be referenced
+directly by THIRD code (most FORTH systems implement the inner interpreter
+in a headless word so it is imposible to refer to it). CODE words
+usually execute (NEXT) via NEXT@ PC!, so even they do not refer
+directly to (NEXT).
+
+(NEXT) fetches the cell pointed at by IP and calculates the address of the
+THIRD word to which the cell refers. It uses this to locate the CODE
+word which knows how to execute the THIRD word, then enters that CODE
+word; consequently, the THIRD word is executed.
+
+Because THIRD is position-indepent, THIRD needs to do a bit more work than
+a normal FORTH system does; the cell pointed to by IP contains an offset
+to the THIRD word to be executed, rather than its address; the address of
+the THIRD word to be executed must be calculated. Offsets are relative to
+the location from which they are fetched, so the contents of IP must be
+added to the offset to obtain the address of the next THIRD word to be
+executed.
+
+(NEXT) is the single most-frequently executed piece of code in the system.
+The work that (NEXT) must do to calculate addresses from offsets is
+therefore very expensive. Because of this, THIRD will never perform as
+well as other FORTH systems which do not need to perform this relocation.
+If you are that concerned about performance, you should investigate other
+FORTH systems.
+
+--------------------------------------------------------------------------
+
+                  (OLIT)                  M: ( -> Address )     compiling
+                                          R: ( -> )
+
+(OLIT) is used to create a relocatable reference to the address of another
+word in the dictionary. The reference to (OLIT) is followed by a cell
+containing the offset to the address involved. (OLIT) fetches this offset
+and constructs the address to which it refers, pushing that address on the
+stack.
+
+(OLIT) is used in the definition of words such as IF, which must have
+the address of another word handy (IF needs to be able to find
+(0BRANCH); the executable code for IF contains the sequence (OLIT)
+(0BRANCH) to construct the address of (0BRANCH)). (OLIT) allows
+such words to be compiled with position-independent offsets rather than
+absolute addresses.
+
+--------------------------------------------------------------------------
+
+        (VAR)         M: ( -> Address )                              core
+                      M: ( -> )
+
+(VAR) knows how to execute THIRD words created by VARIABLE. It places
+the address of the THIRD word's definition on the math stack.
+
+--------------------------------------------------------------------------
+
+                    +                     M: ( a, b -> a+b )         core
+                                          R: ( -> )
+
++ adds the two cells on top of the math stack, pushing the sum onto the
+math stack. The two cells used to create the sum are dropped from the math
+stack.
+
+--------------------------------------------------------------------------
+
+                    ++                    M: ( Address -> )          core
+                                          R: ( -> )
+
+++ increments a cell in memory. It pops the address from the math stack,
+fetches a cell from memory at that address, adds one to the value read,
+then writes the new value back into memory at the address.
+
+--------------------------------------------------------------------------
+
+       M: ( Address of the top of the loop, 1 -> ) if used to
+       terminate a do loop.
+ +LOOP M: Initialized otherwise.                                compiling
+       R: ( -> ) if used to terminate a do loop.            immediate
+       R: Initialized otherwise.
+       DP is updated.
+
++LOOP compiles the bottom of a do loop wherein the index is
+incremented some variable amount. It appends a reference to (+LOOP)
+followed by a reference to the top of the loop, the address of which is
+obtained from the math stack.
+
++LOOP expects the cell on top of the math stack to contain a one as an
+indication that the math stack describes a do loop; anything else is
+considered an error and compilation is aborted (see :ABORT). Both the
+one and the address of the top of the do loop are popped from the math
+stack.
+
+Because +LOOP is an IMMEDIATE word, it is executed by : instead of
+compiled.
+
+When +LOOP aborts compilation, it displays NEST?.
+
+--------------------------------------------------------------------------
+
+                                          M: ( Value -> )
+                    ,                     R: ( -> )             compiling
+                                          DP is updated.
+
+, appends a cell containing the value on top of the math stack to the
+dictionary. The cell is written into memory at the address indicated by
+DP, which is then incremented by the number of bytes in a cell to
+account for the new cell. The value is popped from the math stack.
+
+--------------------------------------------------------------------------
+
+                    -                     M: ( a, b -> a-b )         core
+                                          R: ( -> )
+
+- subtracts the cell on top of the math stack from the one second on the
+math stack, pushing the result on the math stack. The two cells which were
+used to create the result are popped from the math stack.
+
+--------------------------------------------------------------------------
+
+                    .                     M: ( Value -> )            core
+                                          R: ( -> )
+
+. displays, in hex, the value contained in the cell on top of the math
+stack. That value is dropped from the math stack.
+
+--------------------------------------------------------------------------
+
+                 .NYBBLE                  M: ( Value -> Value )
+                                          R: ( -> )
+
+.NYBBLE displays, in hex, the most-significant four bits of the value in
+the cell on top of the math stack. The cell is not discarded from the math
+stack.
+
+The reliance on .NYBBLE for displaying cells limits THIRD to machines for
+which the cell size is a multiple of four bits.
+
+--------------------------------------------------------------------------
+
+                 .NYBBLES                 M: ( Value, Count -> )     core
+                                          R: ( -> )
+
+.NYBBLES displays, in hex, the least significant Count nybbles of the
+Value. Both the value displayed and the number of nybbles to be displayed
+are dropped from the stack.
+
+--------------------------------------------------------------------------
+
+                    0                     M: ( -> 0 )                core
+                                          R: ( -> )
+
+0 pushes the constant value zero onto the math stack. It is used
+frequently enough in the system code that having a word to hold the
+constant requires less memory space than a (LIT) 0 sequence.
+
+--------------------------------------------------------------------------
+
+                                        M: ( Value -> 1 ) if Value<0
+                   0<                   M: ( Value -> 0 ) otherwise  core
+                                        R: ( -> )
+
+0< compares the value in the cell on top of the math stack against zero.
+If the value is less than zero, it is replaced with one. Otherwise, the
+value is replaced with zero.
+
+--------------------------------------------------------------------------
+
+                                        M: ( Value -> 1 ) if Value=0
+                   0=                   M: ( Value -> 0 ) otherwise  core
+                                        R: ( -> )
+
+This word compares the value in the cell on top of the math stack with
+zero, replacing that value with the result. If the value in the cell on
+top of the math stack is zero, it is replaced with one. Otherwise, it is
+replaced with zero.
+
+--------------------------------------------------------------------------
+
+                    1                     M: ( -> 1 )                core
+                                          R: ( -> )
+
+1 pushes the constant value one onto the math stack. It is used frequently
+enough in the system code that having a word to hold the constant requires
+less memory space than a (LIT) 1 sequence.
+
+--------------------------------------------------------------------------
+
+   M: ( -> ) if there are no compilation errors.
+   M: Initialized otherwise. R: ( -> ) if there are no
+   compilation errors.
+ : R: Initialized otherwise. LAST is updated.               compiling
+   DP is updated.
+   Tokens are consumed from INBUF, which implies that
+   IN is updated.
+   :DP, :LAST, :MP, and :DONE are initialized.
+
+: creates a new executable THIRD word. The definition of such a word
+contains a list of references to other THIRD words; when the new word is
+executed, those words are executed in sequence.
+
+The name of the new word is taken from the next token available in
+INBUF. : uses CREATE to create the header for the new word,
+pointing it's code field at (:). Once the header is created, :
+executes essentially as follows:
+
+  * Grab a token from INBUF, acquiring a new command line if
+    INBUF is empty. (see TOKEN and GETLINE)
+  * If that token is the name of a word in the dictionary, (see )
+
+       * If that word is an IMMEDIATE word, execute it.
+       * Otherwise, append a reference to that word to the dictionary.
+         (see O,)
+
+  * If the word looks like a number, push a copy of the number onto the
+    math stack. (see ISNUMBER and >NYBBLES)
+  * Otherwise, display the bogus token followed by a question mark and
+    abort compilation. (see :ABORT)
+  * Repeat until compilation is done. (see :DONE and ;).
+
+Upon exiting, : checks the math stack depth to ensure that all program
+control structures have been completed. If there is stuff left on the math
+stack from an incomplete program control structure, the error message in
+NEST? is displayed and compilation is aborted.
+
+When compilation is aborted, the changes to the dictionary made by : are
+reversed; the dictionary is returned to the state it had before the
+compilation was begun.
+
+--------------------------------------------------------------------------
+
+                         M: Initialized
+         :ABORT          R: Initialized                         compiling
+                         DP is restored from :DP.
+                         LAST is restored from :LAST.
+
+:ABORT is the escape hatch used by : when it detects a compilation
+error. It restores the dictionary to it's state before the compilation was
+begun and executes ABORT.
+
+--------------------------------------------------------------------------
+
+                  :DONE                   M: ( -> Address )     compiling
+                                          R: ( -> )
+
+:DONE is a variable used by : to determine whether compilation is
+complete. Because :DONE is a variable, executing it pushes the address of
+its definition on the math stack.
+
+: initializes :DONE to zero when it begins compiling a definition. An
+IMMEDIATE word sets :DONE to a non-zero value to tell : to exit.
+This is primarily done by ;.
+
+--------------------------------------------------------------------------
+
+                   :DP                    M: ( -> Address )     compiling
+                                          R: ( -> )
+
+:DP is a variable used by : to hold a copy of the value in DP
+before compilation started. This allows : to back out the changes
+made to the dictionary if an error occurs during compilation. Because :DP
+is a variable, executing it pushes the address of its definition on the
+math stack.
+
+--------------------------------------------------------------------------
+
+                  :LAST                   M: ( -> Address )     compiling
+                                          R: ( -> )
+
+:LAST is a variable used by : to hold a copy of the value in DP
+before compilation started. This allows : to back out the changes
+made to the dictionary if an error occurs during compilation. Because
+:LAST is a variable, executing it pushes the address of its definition on
+the math stack.
+
+--------------------------------------------------------------------------
+
+                   :MP                    M: ( -> Address )     compiling
+                                          R: ( -> )
+
+:MP is a variable used by : to hold a copy of the value of the math
+stack pointer before compilation started. This allows : to detect
+that a control structure was not completed before the end of compilation
+so it can report the error to the user. Because :MP is a variable,
+executing it pushes the address of its definition on the math stack.
+
+--------------------------------------------------------------------------
+
+                                      M: ( -> )                 compiling
+                  ;                   R: ( -> )                 immediate
+                                      :DONE is set to one.
+
+; terminates a definition created by :. It appends a cell to the
+dictionary which contains a reference to (;) then sets :DONE to
+one; this causes : to perform its final error checking and exit.
+
+Because ; is an IMMEDIATE word, : executes it instead of
+compiling a reference to it.
+
+--------------------------------------------------------------------------
+
+                                          M: ( a, b -> 1 ) if a<b
+                    <                     M: ( a, b -> 0 ) otherwise core
+                                          R: ( -> )
+
+< compares the values in the two cells on top of the math stack, pushing
+the result onto the math stack. If the value in the cell on top of the
+math stack is less than the value in the next cell, a one is pushed onto
+the math stack. Otherwise, a zero is pushed. The cells used in the
+comparison are dropped from the math stack.
+
+--------------------------------------------------------------------------
+
+               <<                M: ( Value, Count -> Value<<Count ) core
+                                 R: ( -> )
+
+<< shifts the value in the second cell of the math stack to the left by
+the number of bits specified in the cell on top of the math stack, pushing
+the result onto the math stack. The two cells used to create the value are
+dropped from the math stack.
+
+Zeros are shifted into the rightmost bit positions.
+
+--------------------------------------------------------------------------
+
+                    <R                    M: ( -> Value )            core
+                                          R: ( Value -> )
+
+<R moves a value from the return stack to the math stack. It pops a cell
+from the return stack and pushes the value from that cell onto the math
+stack.
+
+--------------------------------------------------------------------------
+
+                                          M: ( a, b -> 1 ) if a=b
+                    =                     M: ( a, b -> 0 ) otherwise core
+                                          R: ( -> )
+
+= compares the values in the top two cells of the math stack, pushing the
+result of the comparison onto the math stack. If the values are equal, a
+one is pushed onto the math stack. Otherwise, a zero is pushed. The two
+cells used in the comparison are dropped from the math stack.
+
+--------------------------------------------------------------------------
+
+                                          M: ( a, b -> 1 ) if a>b
+                    >                     M: ( a, b -> 0 ) otherwise core
+                                          R: ( -> )
+
+> compares the values in the two cells on top of the math stack, pushing
+the result onto the math stack. If the value in the cell on top of the
+math stack is greater than the value in the next cell, a one is pushed
+onto the math stack. Otherwise, a zero is pushed. The cells used in the
+comparison are dropped from the math stack.
+
+--------------------------------------------------------------------------
+
+               >>                M: ( Value, Count -> Value>>Count ) core
+                                 R: ( -> )
+
+>> shifts the value in the second cell of the math stack to the right by
+the number of bits specified in cell on top of the math stack, pushing the
+result onto the math stack. The two cells used to create the value are
+dropped from the math stack.
+
+The shift performed is a logical shift, not an arithmetic one; zeros are
+shifted into the leftmost bit positions.
+
+--------------------------------------------------------------------------
+
+                 >NYBBLE                  M: ( Character -> Value )  core
+                                          R: ( -> )
+
+>NYBBLE converts an character from an ASCII hexadecimal digit to its
+corresponding binary value. It assumes the cell on top of the math stack
+contains an ASCII hexadecimal digit. It replaces that digit with the
+binary value corresponding to that digit.
+
+--------------------------------------------------------------------------
+
+               >NYBBLES               M: ( Address, Count -> Value ) core
+                                      R: ( -> )
+
+>NYBBLES converts a counted string of ASCII hexadecimal digits into its
+corresponding binary representation. The address and count of the string
+are popped from the math stack and the corresponding binary representation
+is pushed onto it.
+
+>NYBBLES assumes each character in the counted string is either an ASCII
+hexadecimal digit or the character '.'. The character '.' is ignored; the
+ASCII hexadecimal digits are converted to binary. Ignoring '.' allows you
+to use that character to separate long numbers into shorter, eaiser to
+error-check numbers.
+
+--------------------------------------------------------------------------
+
+                    >R                    M: ( Value -> )            core
+                                          R: ( -> Value )
+
+>R moves a value from the math stack to the return stack. It pops a cell
+from the math stack and pushes the value from that cell onto the return
+stack.
+
+--------------------------------------------------------------------------
+
+ ?ABORT M: ( -> ) if there is no byte available at the console. R: ( core
+        -> ) if there is no byte available at the console.
+
+?ABORT calls ABORT if there is a character available at the console.
+Because ABORT initializes the system, ?ABORT will only return if
+there is no byte available at the console.
+
+--------------------------------------------------------------------------
+
+                    @                     M: ( Address -> Value )    core
+                                          R: ( -> )
+
+@ uses the cell on top of the math stack as a memory address. It pops the
+address from the math stack, fetches a cell from memory at that address,
+and pushes the value fetched onto the math stack.
+
+--------------------------------------------------------------------------
+
+                  ABORT                   M: Initialized             core
+                                          R: Initialized
+
+ABORT initializes the math and return stacks and enters INTERPRET. It
+is used to put the system in a known state as part of error recovery.
+
+Because ABORT does not initialize DP and LAST, ABORT does not
+forget any user-created definitions stored in the dictionary.
+
+--------------------------------------------------------------------------
+
+                                      M: ( Number of bytes -> )
+                ALLOT                 R: ( -> )                 compiling
+                                      DP is updated.
+
+ALLOT allocates a chunk of memory onto the end of the last word in the
+dictionary. It does this by adding the specified number of bytes to
+DP. The number of bytes is popped from the math stack.
+
+The primary use of ALLOT is to create a variable containing space for an
+array. However, care must be taken in this, because CREATE does not
+fill in the code field address of a word it creates. The easiest way to
+create a variable containing an array is through something like 0 VARIABLE
+BOOGER size ALLOT. This creates a variable named BOOGER which contains the
+value 0 and then appends size bytes to that definition. When BOOGER is
+executed, the address of the cell containing zero is pushed on the math
+stack. This wastes a cell of memory, but the alternatives are pretty messy
+unless you are willing to create a word which creates the array (perhaps
+something like : ARRAY CREATE (OLIT) (VAR) ,
+ALLOT ; would work).
+
+--------------------------------------------------------------------------
+
+                   AND                    M: ( a, b -> a AND b )     core
+                                          R: ( -> )
+
+AND forms the bitwise and of the two cells on top of the math stack,
+pushing the result onto the math stack. The two cells used to create the
+result are dropped from the math stack.
+
+--------------------------------------------------------------------------
+
+                    B!                    M: ( Value, Address -> )   core
+                                          R: ( -> )
+
+B! stores a byte from the math stack into memory at a specified address.
+It pops the address and the value from the math stack then stores the
+least-significant byte of the value in memory at the address.
+
+A byte is the smallest unit of memory which is addressable on the machine.
+Although this is typically an 8-bit value, it is not necessarily so. A
+cell contains at least one byte. A byte contains at least 8 bits.
+
+--------------------------------------------------------------------------
+
+                                          M: ( Value -> )
+                    B,                    R: ( -> )             compiling
+                                          DP is updated.
+
+B, appends a byte containing the least-significant byte of the value on
+top of the math stack to the dictionary. The byte is written into memory
+at the address indicated by DP, which is then incremented to account
+for the byte. The value is popped from the math stack.
+
+A byte is the smallest unit of memory which is addressable on the machine.
+Although this is typically an 8-bit value, it is not necessarily so. A
+cell contains at least one byte. A byte contains at least eight bits.
+
+--------------------------------------------------------------------------
+
+                    B@                    M: ( Address -&bt; Value ) core
+                                          R: ( -> )
+
+B@ uses the cell on top of the math stack as a memory address. It pops the
+address from the math stack, fetches a byte from memory at that address,
+zero-extends the byte into a cell, and pushes the resulting value onto the
+math stack.
+
+A byte is the smallest unit of memory which is addressable on the machine.
+Although this is typically an 8-bit value, it is not necessarily so. A
+cell contains at least one byte. A byte contains at least 8 bits.
+
+--------------------------------------------------------------------------
+
+      M: ( -> )
+ CODE R: ( -> )                                                 compiling
+      A token is consumed from INBUF, which implies that
+      IN is updated. DP is updated.
+
+CODE creates the header for a machine code word and points its code field
+address at itself because a machine code word is a word which contains the
+code which knows how to execute it.
+
+CODE creates the header using CREATE. It then deposits the offset to
+DP in the code field address (which will always be zero; i.e., the
+offset to the code field address of the word containing the machine code
+which knows how to execute this word is zero). When CODE is done, DP
+points at the first byte of the word's definition.
+
+THIRD does not provide an assembler to help you fill in the body of a CODE
+word. You will have to do this by hand using , and related words. And
+you'd dang well better know what you're doing!
+
+--------------------------------------------------------------------------
+
+          M: ( Value -> )
+ CONSTANT R: ( -> )                                             compiling
+          A token is consumed from INBUF, which implies
+          that IN is updated. DP is updated.
+
+CONSTANT creates a word in the dictionary which holds a constant value.
+The name of the constant is taken from the next token in (a
+href="#core_INBUF">INBUF, the input buffer. The value of the constant is
+popped from the math stack and stored in the constant's definition. Upon
+executing the new constant, the value stored in the first cell of its
+definition is pushed onto the math stack.
+
+CONSTANT using CREATE to create the header for the new constant. It
+points the code field address of the constant at (CONSTANT), which
+knows how to find the first cell in the definition of a word. It then
+appends the value from the cell on top of the math stack to the word's
+definition using ,.
+
+--------------------------------------------------------------------------
+
+              COUNT               M: ( Address -> Address+1, Count ) core
+                                  R: ( -> )
+
+Given the address in memory of a counted string (see $), COUNT
+extracts the length of the string and the address of the first byte of the
+string.
+
+--------------------------------------------------------------------------
+
+                    CR                    M: ( -> )                  core
+                                          R: ( -> )
+
+CR displays a carriage return on the console. It is equivalent to 13
+EMIT.
+
+--------------------------------------------------------------------------
+
+        M: ( -> )
+ CREATE R: ( -> )                                               compiling
+        A token is consumed from INBUF, which implies that
+        IN is updated. DP is updated.
+
+CREATE appends a new header to the dictionary. It creates the name, flag,
+and link fields of the name and points LAST at the new header. A
+dictionary entry consists of the following fields in this order:
+
+  * The name of the word. This is an ASCII string which is padded with
+    NULLs to an even cell boundary.
+  * The flag cell. This cell contains the length of the name, including
+    any NULLs which were added to the name to pad it to an even cell
+    boundaries. There are also two bits in this cell used as flags. Bit 7
+    is the IMMEDIATE flag. Bit 6 is set on (NEXT) to mark it as
+    the first one in the dictionary.
+  * The link field. This is a cell containing the offset from this word's
+    code field address to the code field address of the previous word.
+  * The code field. This is a cell containing the offset to the code field
+    of a word containing machine code which knows how to execute the word.
+  * The definition. Any memory allocated to the word after the code field
+    is part of its definition.
+
+When CREATE is done, DP contains the code field address of the new
+word. CREATE does not ensure the code field points to anything; whoever is
+creating the word must deposit a code field using O, before the new
+word is executed.
+
+CREATE obtains the name of the new word from INBUF using TOKEN.
+If there is no token available, CREATE displays NAME? and bebops on
+over to ABORT.
+
+CREATE may also fail if the token obtained from INBUF is longer than
+63 characters. In this case, CREATE displays LEN? before it enters
+ABORT.
+
+--------------------------------------------------------------------------
+
+                  CVTW@                   M: ( Address -> Value )    core
+                                          R: ( -> )
+
+CVTW@ uses the cell on top of the math stack as a memory address. It pops
+the address from the math stack, fetches a word from memory at that
+address, sign-extends that word to a cell, and pushes the resulting value
+on the math stack.
+
+A word in this case is an intermediate unit between a byte and a cell.
+Although this is typically a 16-bit value, it is not necessarily so. A
+cell contains at least one word.
+
+This is similar to W@, except that W@ zero-extends the word to
+convert it to a cell instead of sign-extending it.
+
+--------------------------------------------------------------------------
+
+                 DIGITMAP                 M: ( -> Address )          core
+                                          R: ( -> )
+
+DIGITMAP is a variable which contains an array of bytes that are used to
+determine whether an ASCII character is a hexadecimal digit. There is a
+bit in the array for each possible ASCII character (0 through 7f hex)
+which is set if the character is to be considered a hexadecimal digit.
+
+Given a character code, the byte containing the bit for that character can
+be found by shifting the character code right three bits and adding that
+result to the address returned by executing digitmap; given a character
+code on the math stack 3 << DIGITMAP + yields the address of the
+byte in DIGITMAP corresponding to the character. The bit position within
+that byte is given by three least significant bits of the character code;
+the character code can be converted to a bit mask by 7 AND 1
+SWAP >>.
+
+To aid in the transcription of long numbers, '.' is accepted as being a
+digit. Code which converts a string of ASCII characters to a binary number
+should ignore '.'. This allows you to use '.' to break large numbers into
+smaller, easier to error-check groups; you can use DEAD.BEEF as a synonym
+for DEADBEEF.
+
+--------------------------------------------------------------------------
+
+                    M: ( -> Address of the top of the loop, 1 ) compiling
+         DO         R: ( -> )                                   immediate
+                    DP is updated.
+
+DO compiles the top of a do loop. It appends a reference to (DO) to
+the dictionary and pushes the address of the top of the loop onto the math
+stack for later use by LOOP or +LOOP. It also pushes a one onto
+the math stack to indicate that a do loop is being compiled.
+
+Because DO is an IMMEDIATE word, it is executed by : instead of
+compiled.
+
+It is important to realize that there is a difference between the stack
+effects of DO, which occur at compilation time, and those of (DO),
+which occur at run time. DO compiles the top of a do loop while (DO)
+actually enters the loop; the loop is not entered until execution reaches
+the (DO) which has been appended to the dictionary by DO.
+
+A do loop is a counted loop; it executes the loop some number of times,
+maintaining a loop index which may be used to identify the iteration of
+the loop. A do loop comes in two flavors: DO ... LOOP and DO ...
++LOOP. The first form always increments the loop index by one, while
+the second increments the loop index by the value on top of the math stack
+when the bottom of the loop is executed (not when it is compiled!). DO ...
+LOOP is essentially equivalent to DO ... 1 +LOOP.
+
+The do loop is executed when the index for the loop is no longer less than
+the limit for the loop. Thus, 10 0 DO LOOP will execute its do loop
+sixteen times with the index ranging from 0 through F. Similarly, 10 0 DO
+2 +LOOP will execute its loop eight times with the index being first
+0, then 2, then 4, etc. through E.
+
+The loop index is stored on top of the return stack (see (DO),
+(LOOP), and (+LOOP)), so it may be accessed inside the loop
+using R.
+
+--------------------------------------------------------------------------
+
+                    DP                    M: ( -> Address )     compiling
+                                          R: ( -> )
+
+DP is a variable containing the dictionary pointer. Executing DP pushes a
+copy of the dictionary pointer onto the math stack.
+
+The dictionary pointer is the memory address of the next byte which will
+be allocated to a user-created definition.
+
+--------------------------------------------------------------------------
+
+                   DROP                   M: ( Value -> )            core
+                                          R: ( -> )
+
+DROP discards the cell on top of the math stack.
+
+--------------------------------------------------------------------------
+
+                  DUP                   M: ( Value -> Value, Value ) core
+                                        R: ( -> )
+
+DUP makes a copy of the cell on top of the math stack, pushing the copy
+onto the math stack.
+
+--------------------------------------------------------------------------
+
+      M: ( Address of the branch offset left behind by IF,
+      3 -> Address of a new branch offset, 3 ) if used to build
+      an if construct.                                     compiling
+ ELSE M: Initialized otherwise.                                 immediate
+      R: ( -> ) if used to build an if construct.
+      R: Initialized otherwise.
+      DP is updated.
+
+ELSE is used to construct the false branch of an if construct. It
+fills in the conditional branch left behind by IF, popping the
+information describing that branch from the math stack, and creates an
+unconditional branch to be filled in by ENDIF. The address of the
+offset cell for the unconditional branch is pushed onto the math stack, as
+well as a three to indicate that an if construct is being
+constructed.
+
+ELSE examines the cell on the top of the math stack to ensure it is being
+used to build an if construct. If this is not the case, ELSE aborts
+compilation (see :ABORT). When ELSE aborts compilation, it display
+NEST? to indicate the reason for the abort.
+
+Because ELSE is an IMMEDIATE word, it is executed by : rather
+than compiled.
+
+--------------------------------------------------------------------------
+
+       M: ( Address of branch offset, 3 -> ) if used to
+       complete an if construct.                           compiling
+ ENDIF M: Initialized otherwise. R: ( -> ) if used to complete  immediate
+       an if construct.
+       R: Initialized otherwise.
+
+ENDIF is used to complet the compilation of an if construct. It fills
+in the cell reserved for a branch offset by either IF or ELSE,
+obtaining the information about that cell from the math stack. The
+information about the branch offset cell is dropped from the math stack.
+
+ENDIF expects the cell on top of the math stack to contain a three as an
+indication that an if construct is being compiled. If the cell on top
+of the math stack contains any other value, compilation is aborted (see
+:ABORT). When ENDIF aborts compilation, it displays NEST? to
+indicate the reason for the abort.
+
+Because ENDIF is an IMMEDIATE word, it is executed by : rather
+than compiled.
+
+--------------------------------------------------------------------------
+
+                  EXEC                  M: ( Code field address -> ) core
+                                        R: ( -> )
+
+EXEC executes the THIRD word whose address is on top of the math stack.
+The address points to the THIRD word's code field, which contains a
+pointer to the CODE word which knows how to execute the THIRD word.
+EXEC locates that CODE word and enters it, consequently executing the
+THIRD word.
+
+--------------------------------------------------------------------------
+
+      M: ( Address, Count -> Address, Count, Code field address ) if
+ FIND the named word exists in the dictionary.                       core
+      M: ( Address, Count -> Address, Count, 0 ) otherwise.
+      R: ( -> )
+
+FIND searches the dictionary for a word with the name given by Address and
+Count. If a word with that name exists in the dictionary, its code field
+address is pushed onto the math stack. Otherwise, a zero is pushed onto
+the math stack. The address and count of the name are not removed from the
+math stack.
+
+Because FIND begins its search with the word pointed to by LAST, FIND
+will always find the most recent word with a given name.
+
+--------------------------------------------------------------------------
+
+                             M: ( -> )
+           GETLINE           R: ( -> )                               core
+                             INBUF and IN are initialized.
+
+GETLINE reads a line of input from the console, storing it in INBUF.
+INBUF is arranged as a standard counted string; the first byte (
+INBUF B@) is the length of the line and the remaining bytes are
+data from the line. There is an ASCII NULL following the data from the
+line.
+
+The only control characters GETLINE recognizes are carriage return,
+backspace, and delete. Carriage return terminates the input; the length
+byte is finalized, a NULL is appended to the line, IN is initialized,
+and GETLINE returns. Backspace and delete both delete the last character
+entered; that character is deleted from the line and a
+backspace-space-backspace sequence is displayed to delete the character
+from the screen.
+
+If INBUF becomes full (there is space for 79 characters), GETLINE
+stops accepting printable characters; at that point, the only characters
+accepted are carriage return, backspace, and delete.
+
+GETLINE uses KEY to obtain characters from the console. Several parts
+of the system assume that KEY will return values in the range 0
+through 7f hexadecimal. GETLINE does not enforce this assumption.
+
+--------------------------------------------------------------------------
+
+          ID>$           M: ( Code field address -> Address, Count ) core
+                         R: ( -> )
+
+Given the code field address of a word in the dictionary, ID>$ returns the
+address and byte count of name of the word. The code field address is
+popped from the math stack, and the address and byte count of the name are
+pushed onto it.
+
+--------------------------------------------------------------------------
+
+                 IDENTIFY                 M: ( -> )                  core
+                                          R: ( -> )
+
+IDENTIFY displays the sign-on banner for THIRD. It is executed at system
+initialization time to identify the system to the user.
+
+The sign-on banner is "THIRD version CellSize cellsize WordSize wordsize
+Bits bits", where version is the version of THIRD, cellsize is the number
+of bytes in a cell, wordsize is the number of bytes in a word, and bits is
+the number of bits in a cell.
+
+--------------------------------------------------------------------------
+
+                  IDMSG1                  M: ( -> Address, Count )   core
+                                          R: ( -> )
+
+IDMSG1 is a counted string which contains a portion of the sign-on banner
+printed by THIRD at system initialization time. Executing IDMSG1 pushes
+the address and byte count of that portion of the sign-on banner on the
+math stack.
+
+The sign-on banner is "THIRD version CellSize cellsize WordSize wordsize
+Bits bits", where version is the version of THIRD, cellsize is the number
+of bytes in a cell, wordsize is the number of bytes in a word, and bits is
+the number of bits in a cell. IDMSG1 contains the string "THIRD version
+CellSize ".
+
+--------------------------------------------------------------------------
+
+                  IDMSG2                  M: ( -> Address, Count )   core
+                                          R: ( -> )
+
+IDMSG2 is a counted string which contains a portion of the sign-on banner
+printed by THIRD at system initialization time. Executing IDMSG2 pushes
+the addres and byte count of that portion of the sign-on banner on the
+math stack.
+
+The sign-on banner is "THIRD version CellSize cellsize WordSize wordsize
+Bits bits", where version is the version of THIRD, cellsize is the number
+of bytes in a cell, wordsize is the number of bytes in a word, and bits is
+the number of bits in a cell. IDMSG2 contains the string "WordSize ".
+
+--------------------------------------------------------------------------
+
+                  IDMSG3                  M: ( -> Address, Count )   core
+                                          R: ( -> )
+
+IDMSG3 is a counted string which contains a portion of the sign-on banner
+printed by THIRD at system initialization time. Executing IDMSG3 pushes
+the addres and byte count of that portion of the sign-on banner on the
+math stack.
+
+The sign-on banner is "THIRD version CellSize cellsize WordSize wordsize
+Bits bits", where version is the version of THIRD, cellsize is the number
+of bytes in a cell, wordsize is the number of bytes in a word, and bits is
+the number of bits in a cell. IDMSG3 contains the string "Bits ".
+
+--------------------------------------------------------------------------
+
+        M: ( -> Address of cell reserved for branch offset, 3 ) compiling
+   IF   R: ( -> )                                               immediate
+        DP is updated.
+
+IF compiles the beginning of an if construct. It appends a reference to
+(0BRANCH) to the dictionary and reserves a cell following it to
+receive the address of the end of the construct. It pushes the address of
+the reserved cell onto the math stack followed by a three to indicate that
+an if construct is being compiled.
+
+Because IF as an IMMEDIATE word, it is executed by : rather than
+compiled.
+
+The if construct has two flavors: IF ... ENDIF and IF ... ELSE
+... ENDIF. In the first case, the code between IF and ENDIF is
+executed if the top of the math stack contains a non-zero value upon
+encountering the IF; a zero value causes that code to be skipped and
+execution continues following ENDIF. In the second case, the code
+between IF and ELSE is executed if the cell on top of the math stack
+contains a non-zero value when the IF is encountered and the code between
+ELSE and ENDIF is executed if the cell on top of the math stack
+contains zero when the IF is encountered.
+
+Put another way, when execution reaches the point of the IF, execution
+will branch either to the code immediately following the next ELSE,
+if there is one, or to the code immediately following the next ENDIF,
+if there is no ELSE if the contents of the cell on top of the math
+stack are zero. If the contents of the cell on the math stack are not zero
+when the IF is reached, execution does not branch, but flows straight
+through the IF. However, if there is an ELSE, execution will
+unconditionally branch to the ENDIF when it is encountered.
+
+It is important to distinguish between the effects of IF during
+compilation and execution. During compilation, the contents of the math
+stack are irrelevant; IF will always append a reference to (0BRANCH)
+to the dictionary and updat the math stack. At execution time, the
+(0BRANCH) is executed, and that word's stack effects are the ones
+which must be considered.
+
+--------------------------------------------------------------------------
+
+                IMMEDIATE                 M: ( -> )             compiling
+                                          R: ( -> )
+
+IMMEDIATE sets bit 7 of the flag field (see CREATE) of the dictionary
+entry pointed to by LAST. This marks the last word entered into the
+dictionary as an IMMEDIATE word, which will cause : to execute the
+word instead of compiling a reference to the word. This allows you to
+extend the behavior of the compiler.
+
+--------------------------------------------------------------------------
+
+                    IN                    M: ( -> Address )          core
+                                          R: ( -> )
+
+IN is a variable used to hold the offset of the next byte to be digested
+from INBUF. TOKEN uses IN to keep track of where in memory it
+should start looking for the next token.
+
+The offset of the first character stored in INBUF is 1.
+
+--------------------------------------------------------------------------
+
+                  INBUF                   M: ( -> Address )          core
+                                          R: ( -> )
+
+INBUF is a variable containing an 81 byte array used to accept input from
+the console. This is long enough for a count byte, a 79 character line,
+and a terminating byte of zero. When INBUF is executed, the address of the
+array is pushed on the math stack.
+
+Although INBUF contains a counted string, it is executed by (VAR)
+rather than ($). Yeah, it's weird, and may well be a design error.
+Nevertheless, that's the way it is.
+
+--------------------------------------------------------------------------
+
+                INTERPRET                 M: ( Varies -> Varies )
+                                          R: ( Varies -> Varies )
+
+INTERPRET is the main user interface of THIRD; when you type commands into
+THIRD you are more likely than not interacting with INTERPRET. It accepts
+a line of commands, breaks it into tokens, and executes the tokens.
+Because the action taken by INTERPRET depends on the commands you issue,
+the stack effects of INTERPRET are variable.
+
+The work done by INTERPRET is essentially:
+
+  * Prompt the user for a command line. (see PROMPT and TYPE)
+  * Accept the command line. (see TOKEN)
+
+       * If the token is the name of a word which is present in the
+         dictionary (see FIND), execute it.
+       * If the token is an ASCII hexadecimal number, push the
+         corresponding binary number onto the math stack. (see
+         ISNUMBER and >NYBBLES)
+       * Otherwise, display an error message.
+
+  * Lather, rinse, and repeat.
+
+--------------------------------------------------------------------------
+
+           M: ( Character -> Character, 1 ) if Character is an ASCII
+ ISCONTROL control character                                         core
+           M: ( Character -> Character, 0 ) otherwise
+           R: ( -> )
+
+ISCONTROL examines the value in the cell on top of the math stack to
+determine whether it is an ASCII control character or a printing
+character. The value is deemed to be an ASCII control character if it is
+either less than 32 (an ASCII space) or equal to 127 (an ASCII delete);
+all other values are deemed to be printing characters. If the character is
+a control character, a one is pushed onto the math stack; otherwise a zero
+is pushed. The character is not dropped from the math stack.
+
+--------------------------------------------------------------------------
+
+           M: ( Character -> 0 ) if character is not a hexadecimal digit.
+  ISDIGIT  M: ( Character -> Non-zero value ) otherwise.
+           R: ( -> )
+
+ISDIGIT examines the character code on top of the math stack to see
+whether that character should be considered to be a hexadecimal digit. If
+it is such a digit, some non-zero value is pushed on the math stack. If it
+is not such a digit, a zero is pushed on the math stack. In both cases,
+the character code which was checked is popped from the math stack.
+
+ISDIGIT assumes the character code is within the ASCII character range;
+i.e., is some value from 0 through 7f hex, inclusive. It does not enforce
+this assumption; garbage in, garbage out.
+
+DIGITMAP considers '.' to be a digit to allow users to break up large
+numbers into shorter, less error-prone, ones. Because DIGITMAP
+considers '.' to be a digit, ISDIGIT also considers '.' to be a digit.
+
+--------------------------------------------------------------------------
+
+          M: ( Address, Count -> Address, Count, 1 ) if the string
+ ISNUMBER is an ASCII hexadecimal number.                            core
+          M: ( Address, Count -> Address, Count, 0 ) otherwise.
+          R: ( -> )
+
+ISNUMBER examines a counted string to see whether it is an ASCII
+hexadecimal number. A string is considered to be an ASCII hexadecimal
+number of each character in the string is considered to be a digit by
+DIGITMAP. If the counted string is an ASCII hexadecimal number, a one
+is pushed onto the math stack. If the counted string is not an ASCII
+hexadecimal number, a zero is pushed. The original address and count for
+the string are left on the math stack.
+
+--------------------------------------------------------------------------
+
+                   LAST                   M: ( -> Address )          core
+                                          R: ( -> )
+
+LAST is a variable used to keep track of the address of the last
+definition in the dictionary. The address returned by LAST is the is the
+code field address associated with that definition.
+
+--------------------------------------------------------------------------
+
+                 LEN?                  M: ( -> Address, Count ) compiling
+                                       R: ( -> )
+
+LEN? contains the error message displayed by CREATE when it discovers
+that you are trying to create a word with a name longer than 63
+characters. Executing LEN? pushes the address and byte count of the error
+message on the math stack.
+
+LEN? contains the string "Len?" preceded and followed by a newline (a
+carriage return/linefeed sequence).
+
+--------------------------------------------------------------------------
+
+      M: ( Address of the top of the loop, 1 -> ) if used to
+      terminate a do loop.
+ LOOP M: Initialized otherwise.                                 compiling
+      R: ( -> ) if used to terminate a do loop.            immediate
+      R: Initialized otherwise.
+      DP is updated.
+
+LOOP compiles the bottom of a do loop wherein the index is
+incremented by one. It appends a reference to (LOOP) followed by a
+reference to the top of the loop, the address of which is obtained from
+the math stack.
+
+LOOP expects the cell on top of the math stack to contain a one as an
+indication that the math stack describes a do loop; anything else is
+considered an error and compilation is aborted (see :ABORT). Both the
+one and the address of the top of the do loop are popped from the
+math stack.
+
+Because LOOP is an IMMEDIATE word, it is executed by : instead
+of compiled.
+
+When LOOP aborts compilation, it displays NEST?.
+
+--------------------------------------------------------------------------
+
+                   MP!                    M: Initialized             core
+                                          R: ( -> )
+
+MP! initializes the math stack. Any and all items on the math stack are
+discarded. It is used by error handling and system initialization to force
+the math stack to a known state.
+
+--------------------------------------------------------------------------
+
+                   MP@                    M: ( -> MP )               core
+                                          R: ( -> )
+
+MP@ pushes a cell containing a copy of the math stack pointer onto the
+math stack.
+
+MP@ is intended for use by words which create dictionary entries to verify
+that the all control structures have been cleanly terminated at the end of
+compilation. It is not intended to provide a back door into the memory
+space used to hold the math stack. The most you should do with the value
+returned by MP@ is to compare it with another value returned by MP@. MP@
+is not guaranteed to return a memory address; it may simply return some
+indication of the depth of the math stack. Should MP@ return a memory
+address, it is not specified whether the math stack pointer was copied
+before or after the space required to hold the copy is allocated.
+
+--------------------------------------------------------------------------
+
+                 NAME?                 M: ( -> Address, Count ) compiling
+                                       R: ( -> )
+
+NAME? contains the error message displayed by CREATE when it
+discovers there is no token available in INBUF to use when creating a
+new word. Executing NAME? pushes the address and byte count of the error
+message on the math stack.
+
+NAME? contains the string "Name?" preceded and followed by a newline (a
+carriage return/linefeed sequence).
+
+--------------------------------------------------------------------------
+
+                   NEG                    M: ( a -> 0-a )            core
+                                          R: ( -> )
+
+NEG replaces the value in the cell on top of the math stack with its two's
+complement.
+
+Note that if THIRD is ever ported to a one's complement machine (PDP-10
+anyone?), this portion of the document must be fixed no matter how NEG is
+implemented!
+
+--------------------------------------------------------------------------
+
+                 NEST?                 M: ( -> Address, Count ) compiling
+                                       R: ( -> )
+
+NEST? contains the error message displayed by : when it discovers
+there is stuff left on the math stack at the completion of compilation.
+Executing NEST? pushes the address and byte count of the error message on
+the math stack.
+
+NEST? contains the string "Nest?" preceded and followed by a newline
+
+--------------------------------------------------------------------------
+
+               NEXTCHAR                M: ( -> Character )           core
+                                       R: ( -> ) IN is updated.
+
+NEXTCHAR pushes the next character to be digested from INBUF onto the
+math stack. If that character is not zero (i.e., it is not the ASCII NULL
+which marks the end of INBUF), IN is incremented.
+
+Because NEXTCHAR does not increment IN if the next character to be
+digested is the terminating ASCII NULL, that NULL will be repeatedly
+returned once it is encountered until IN is re-initialized
+(presumably by GETLINE).
+
+--------------------------------------------------------------------------
+
+                    NL                    M: ( -> )                  core
+                                          R: ( -> )
+
+NL displays a newline (a carriage return followed by a linefeed) on the
+console. It is equivalent to 13 EMIT 10 EMIT .
+
+--------------------------------------------------------------------------
+
+                   NOT                    M: ( a -> ~a )             core
+                                          R: ( -> )
+
+NOT replaces the value in the cell on top of the math stack with its one's
+complement.
+
+--------------------------------------------------------------------------
+
+                                          M: ( Address -> )
+                    O,                    R: ( -> )             compiling
+                                          DP is updated.
+
+O, appends a cell containing a relative offset to the specified address to
+the dictionary. The address is popped from the math stack, and offset
+between that address and the address indicated by DP is created, and
+that offset is written into memory at the address indicated by DP.
+DP is incremented by the number of bytes in a cell to account for the
+new cell.
+
+--------------------------------------------------------------------------
+
+              O!              M: ( Target address, Address -> ) compiling
+                              R: ( -> )
+
+O! creates a relative offset to the target address, storing that offset at
+the specified address. Both the target address and the address at which
+the offset is stored are popped from the math stack.
+
+--------------------------------------------------------------------------
+
+             O@             M: ( Address of offset -> Address ) compiling
+                            R: ( -> )
+
+O@ fetches a cell from memory through a relative offset. Given the address
+of a relative offset, it fetches that relative offset, turns it into an
+absolute address, and pushes that address on the math stack. The original
+address is popped from the math stack.
+
+--------------------------------------------------------------------------
+
+                    OR                    M: ( a, b -> a OR b )      core
+                                          R: ( -> )
+
+OR forms the bitwise or of the two cells on top of the math stack, pushing
+the result onto the math stack. The two cells used to create the result
+are dropped from the math stack.
+
+--------------------------------------------------------------------------
+
+                   OVER                   M: ( a, b -> a, b, a )     core
+                                          R: ( -> )
+
+OVER pushes a copy of the second cell on the math stack onto the math
+stack.
+
+--------------------------------------------------------------------------
+
+      M: ( Code field address -> 0 ) if the code field address is
+      for the first word in the dictionary.
+ PREV M: ( Code field address -> Code field address of previous word core
+      ) otherwise.
+      R:
+
+Given the code field address for a word in the dictionary, PREV pushes the
+code field address for the word which appears in the dictionary before
+that word onto the math stack, if there is one. If the given code field
+address is the address of the first word in the dictionary, zero is pushed
+onto the math stack. In both cases, the given code field address is
+dropped from the math stack.
+
+Because zero is reserved to indicate the beginning of the dictionary has
+been reached, it is not possible to build a THIRD system which places the
+code field address of a definition at address zero. This should not be a
+big limitation because there are structures in a definition which precede
+the code field address; a definition which begins at zero does not have a
+code field address of zero.
+
+It is possible to visit every definition in the dictionary by starting at
+LAST and repeating PREV until zero is returned.
+
+--------------------------------------------------------------------------
+
+                  PROMPT                  M: ( -> Address, Count )   core
+                                          R: ( -> )
+
+PROMPT is a counted string which contains the "OK" prompt displayed by
+INTERPRET when it is ready for another line of input. Executing
+PROMPT pushes the address and byte count of the prompt string on the math
+stack.
+
+--------------------------------------------------------------------------
+
+                    R                     M: ( -> Value )            core
+                                          R: ( Value -> Value )
+
+R pushes a copy of the value contained in the cell on top of the return
+stack onto the math stack. The cell is not discarded from the return
+stack.
+
+Because the counter involved in a do loop is stored on the return
+stack, using R in a do loop will push a copy of the loop counter onto
+the math stack.
+
+--------------------------------------------------------------------------
+
+                            M: ( -> Address of top of loop, 2 ) compiling
+           REPEAT           R: ( -> )                           immediate
+                            DP is updated.
+
+REPEAT compiles the top of a repeat loop. It pushes the address of the top
+of the repeat loop onto the math stack, followed by a two to indicate that
+a repeat loop is being compiled.
+
+Because REPEAT is an IMMEDIATE word, it is executed by : instead
+of compiled.
+
+A repeat loop has the general form REPEAT ... UNTIL. The loop is
+repeat as long as the cell on top of the math stack contains zero at the
+bottom of the loop.
+
+--------------------------------------------------------------------------
+
+                   RP!                    M: ( -> )                  core
+                                          R: Initialized
+
+RP! initializes the return stack. Any and all items on the return stack
+are discarded, including the return address for the word which called
+called RP!. It is used during error recovery and system initialization to
+force the return stack to a known state.
+
+--------------------------------------------------------------------------
+
+                   SWAP                   M: ( a, b -> b, a )        core
+                                          R: ( -> )
+
+SWAP interchanges the top two cells on the math stack. The first shall be
+second and the second shall be first.
+
+--------------------------------------------------------------------------
+
+       M: ( -> Address, Count ) Count will be zero if there are no
+ TOKEN more tokens in INBUF.                                    core
+       R: ( -> )
+       IN is updated via NEXTCHAR
+
+TOKEN searches INBUF to find the next token, pushing the address of
+the first byte in the token and the count of bytes in the token onto the
+math stack.
+
+If there are no non-blank characters left in INBUF, the address
+returned is the address of the terminating ASCII NULL. The count returned
+in this case is zero.
+
+A token is a string of non-blank characters. Tokens are separated from
+each other by blanks. TOKEN skips blanks in INBUF until a non-blank
+character is found. The address of that non-blank character is pushed onto
+the math stack. Non-blank characters are then counted until the next blank
+character is found.
+
+TOKEN assumes that INBUF has been loaded by GETLINE. Because
+NEXTCHAR is used to fetch characters from INBUF
+
+The terminating ASCII NULL is treated as a blank if it immediately follows
+a token. Because NEXTCHAR does not advance IN upon encountering
+that NULL, TOKEN will see it again when it searches for the next token,
+and will use it at that time to terminate the search.
+
+--------------------------------------------------------------------------
+
+                   TYPE                   M: ( Address, Count -> )   core
+                                          R: ( -> )
+
+TYPE displays Count bytes from memory beginning at Address. The count and
+address are dropped from the math stack.
+
+--------------------------------------------------------------------------
+
+       M: ( Address of top of loop, 2 -> ) if used to terminate
+       a repeat loop.
+ UNTIL M: Initialized otherwise.                                compiling
+       R: ( -> ) if used to terminate a repeat loop.       immediate
+       R: Initialized othewise.
+       DP is updated.
+
+UNTIL compiles the bottom of a repeat loop. It appends a reference to
+(0BRANCH) to the dictionary followed by a reference to the top of the
+loop, the address of which is obtained from the math stack.
+
+UNTIL expects the cell on top of the math stack to contain a two as an
+indication that the math stack contains information related to a
+repeat loop. If the top cell contains any other value, compilation is
+aborted (see :ABORT). If compilation is aborted, NEST? is
+displayed to indicate the reason for this behavior. The two and the
+address of the top of the loop are popped from the math stack if
+compilation is not aborted.
+
+Because UNTIL is an IMMEDIATE word, it is executed by : rather
+than compiled.
+
+--------------------------------------------------------------------------
+
+          M: ( Initial value -> )
+ VARIABLE R: ( -> )                                             compiling
+          A token is consumed from INBUF, which implies
+          that IN is updated. DP is updated.
+
+VARIABLE creates a word in the dictionary which contains a cell that may
+be used to hold a value. The name of the variable is taken from the next
+token in CREATE to create the header for the new variable. It points
+the code field address of the variable at (VAR), which knows how to
+find the address of the definition of a word. It then stores the cell on
+top of the math stack into the word's definition using ,.
+
+--------------------------------------------------------------------------
+
+                  VLIST                   M: ( -> )                  core
+                                          R: ( -> )
+
+VLIST displays the names of all of the words in the dictionary. Because it
+begins with the word pointed to by LAST, the most recently defined
+word is displayed first. The words are then displayed in order until all
+words in the dictionary have been displayed.
+
+--------------------------------------------------------------------------
+
+                    W!                    M: ( Value, Address -> )   core
+                                          R: ( -> )
+
+W! stores a word from the math stack into memory at a specified address.
+It pops the address and the value from the math stack then stores the
+least-significant word of the value in memory at the address.
+
+A word in this case is an intermediate unit between a byte and a cell.
+Although this is typically a 16-bit value, it is not necessarily so. A
+cell contains at least one word.
+
+--------------------------------------------------------------------------
+
+                                          M: ( Value -> )
+                    W,                    R: ( -> )             compiling
+                                          DP is updated.
+
+W, appends a word containing the least-significant word of the value on
+top of the math stack to the dictionary. The word is written into memory
+at the address indicated by DP, which is then incremented by the
+number of bytes in a word to account for the word. The value is popped
+from the math stack.
+
+A word in this case is an intermediate unit between a byte and a cell.
+Alhtough this is typically a 16-bit value, it is not necessarily so. A
+cell contains at least one word. A word contains at least one byte. A byte
+contains at least eight bits.
+
+--------------------------------------------------------------------------
+
+                    W@                    M: ( Address -> Value )    core
+                                          R: ( -> )
+
+W@ uses the cell on top of the math stack as a memory address. It pops the
+address from the math stack, fetches a word from memory at that address,
+zero-extends that word to a cell, and pushes the resulting value on the
+math stack.
+
+A word in this case is an intermediate unit between a byte and a cell.
+Although this is typically a 16-bit value, it is not necessarily so. A
+cell contains at least one word.
+
+This is similar to CVTW@, except that CVTW@ sign-extends the
+word to convert it into a cell instead of zero-extending it.
+
+--------------------------------------------------------------------------

@@ -1,0 +1,398 @@
+;------------------------------------------------------------------------
+;
+; File:	header.z80
+;
+; Description:
+;
+;	This file contains the variables and routines needed to
+;	implement the Stupid VM used by the Z80 version of THIRD.
+;	This VM is implemented as subroutine calls to the routines that
+;	implement each THIRD Stupid operation. The Stupid operations
+;	use a limited-depth stack-based model as a basis from which
+;	to build the THIRD environment. The actual routines implemented
+;	here are precisely those needed to implement the THIRD
+;	environment; i.e., no operations are implemented that are
+;	not actually used by THIRD.
+;
+; Revisions:
+;
+;	09/10/99 RLI - Initial version for 68HC908GP20 on the AVNET
+;		       evaluation module.
+;	09/14/99 RLI - Moved most of the stuff to trailer.as6808
+;	04/19/01 RLI - Liberated and made into Z80 version. This is
+;	               currently targetted to run under CP/M.
+;	05/11/01 RLI - Updated to include changes made while debugging
+;	               the PDP-8 version. Addition of SWAPs and deletion
+;	               of SYSCALL (QDL still knows about SYSCALL, but the
+;	               console I/O is now done via MSQE, MSE, MSQK, and
+;	               MSK; exit is done via MSBYE).
+
+	.area CODE (ABS)
+	.org 0x0100
+
+;---	CP/M enters here
+
+Reset:
+
+;	Initialize the THIRD virtual machine: we need to set up the
+;	stack pointers and IP.
+
+	ld hl,#ReturnStackBottom
+	ld (StupidRP),hl
+
+	ld hl,#MathStackBottom
+	ld (StupidMP),hl
+
+	ld hl,#W1000_PFA
+	ld (StupidIP),hl
+
+;	Figure out the BIOS jump table addresses for the entries we need.
+
+	ld hl,(1)		; Get address of warm boot vector.
+
+	inc hl			; Form address of console status vector.
+	inc hl
+	inc hl
+	ld (ConSt+1),hl		; Save it.
+
+	inc hl			; Form address of console input vector.
+	inc hl
+	inc hl
+	ld (ConIn+1),hl		; Save it.
+
+	inc hl			; Form address of console output vector.
+	inc hl
+	inc hl
+	ld (ConOut+1),hl	; Save it.
+
+;	We'll use the default CP/M stack at 0x0100. It's plenty deep
+;	for the Stupid VM, which only gets one call deep.
+
+	jp Next
+
+;Checks:
+;	ld hl,(StupidIP)
+;	ld de,(Breakpoint)
+;	ld a,l
+;	cp a,e
+;	jp nz,Next
+;	ld a,h
+;	cp a,d
+;	jp nz,Next
+;	rst 0x38
+;	jp Next
+
+Breakpoint:
+	.word 0x1a16
+
+;	Vectors to get to the BIOS
+
+ConSt:	jp 0			; Console status
+ConIn:	jp 0			; Get character from console
+ConOut:	jp 0			; Put character to console
+
+;---	Stupid VM Registers
+
+StupidHiOffset = 1		; Intel byte order
+StupidLoOffset = 0
+
+;	The Stupid math stack consists of four cells numbered 0
+;	through 3.
+
+StupidR0:
+	.word 0
+StupidR0Hi = StupidR0 + StupidHiOffset
+StupidR0Lo = StupidR0 + StupidLoOffset
+
+StupidR1:
+	.word 0
+StupidR1Hi = StupidR1 + StupidHiOffset
+StupidR1Lo = StupidR1 + StupidLoOffset
+
+StupidR2:
+	.word 0
+StupidR2Hi = StupidR2 + StupidHiOffset
+StupidR2Lo = StupidR2 + StupidLoOffset
+
+StupidR3:
+	.word 0
+StupidR3Hi = StupidR3 + StupidHiOffset
+StupidR3Lo = StupidR3 + StupidLoOffset
+
+;	The Stupid global registers.
+;
+;	Many of the Stupid global registers are pseudo-registers
+;	implemented by stuffing in constants as the Stupid VM fetch
+;	results for that registers. Here are the globals that
+;	actually require storage behind them.
+
+StupidCFA:
+	.word 0
+StupidCFAHi = StupidCFA + StupidHiOffset
+StupidCFALo = StupidCFA + StupidLoOffset
+
+StupidIP:
+	.word 0
+StupidIPHi = StupidIP + StupidHiOffset
+StupidIPLo = StupidIP + StupidLoOffset
+
+StupidMP:
+	.word 0
+StupidMPHi = StupidMP + StupidHiOffset
+StupidMPLo = StupidMP + StupidLoOffset
+
+StupidRP:
+	.word 0
+StupidRPHi = StupidRP + StupidHiOffset
+StupidRPLo = StupidRP + StupidLoOffset
+
+;	We need space for the THIRD stacks. We're going to grow the
+;	math stack up and the return stack down so that they can 
+;	dynamically share a block of space.
+
+MathStackBottom:
+	.blkb 130		; Space for 64 cells
+ReturnStackBottom:
+
+;	StupidInitialDP is the address of the first unused RAM location. The
+;	space allocated for new user-created words begins here.
+
+StupidInitialDP:
+	.word RamEnd
+
+;	StupidInitialLAST is the address of the CFA of the last definition in
+;	the dictionary. We start by pointing it at (LASTWORD), which is given
+;	the fixed number 1001.
+
+StupidInitialLAST:
+	.word W1001_CFA
+
+;	StupidNEXT contains a pointer to the code which knows how to enter
+;	the next THIRD word.
+
+StupidNEXT:
+	.word Next
+;	.word Checks
+
+;	StupidInitialRP contains the address of the bottom of the return
+;	stack.
+
+StupidInitialRP:
+	.word ReturnStackBottom
+
+;	StupidInitialMP contains the address of the bottom of the math
+;	stack.
+
+StupidInitialMP:
+	.word MathStackBottom
+
+;---	StupidElseGo0		Branch if R0 = 0
+;
+;	The call is followed by a word containing the branch address.
+;	If R0 is not 0, this word must be skipped. Otherwise, the word
+;	is used as a branch address.
+
+StupidElseGo0:
+	pop hl			; Get address of branch address
+
+	ld a,(StupidR0Lo)	; a <- R0.Lo | R0.Hi
+	ld c,a
+	ld a,(StupidR0Hi)
+	or a,c
+	jr z,StupidElseGoBranch ; If we need to branch, go
+
+;	We don't need to branch. This is equivalent to branching to the
+;	word following the word we pulled. Add 2 to the return address
+;	and jump to it.
+
+	inc hl
+	inc hl
+	jp (hl)
+
+StupidElseGoBranch:
+
+;	We need to branch to the address pointed to by hl.
+
+	ld e,(hl)
+	inc hl
+	ld d,(hl)
+	push de
+	ret
+
+;---	StupidLessGo1		Branch if r0<r1
+;
+;	The call to StupidLessGo is followed by a word containing the
+;	address to which the branch is to be made. If the branch is
+;	not made, that word must be skipped.
+
+StupidLessGo1:
+	ld hl,(StupidR1)
+	ld a,(StupidR0Hi)
+	sub a,h
+	jr c,StupidLessGo1Branch
+
+	ld a,(StupidR0Lo)
+	sub a,l
+	jr c,StupidLessGo1Branch
+
+;	We don't need to branch, but we _do_ need to skip the branch
+;	address.
+
+	pop hl
+	inc hl
+	inc hl
+	jp (hl)
+
+StupidLessGo1Branch:
+
+;	We need to branch. Pull the address of the branch offset off
+;	the stack and fetch the branch offset.
+
+	pop hl
+	ld e,(hl)
+	inc hl
+	ld d,(hl)
+
+;	Branch to the branch address.
+
+	ex de,hl
+	jp (hl)
+
+;---	StupidShiftLeft1	R0 <- R0 << R1
+
+StupidShiftLeft1:
+	ld a,(StupidR1)
+	or a,a
+	jr z,StupidShiftLeft1Exit ; Exit if nothing to do (count is 0)
+
+	ld b,a
+	ld hl,(StupidR0)
+
+StupidShiftLeft1Loop:
+	ld e,l
+	ld d,h
+	add hl,de
+	djnz StupidShiftLeft1Loop
+	ld (StupidR0),hl
+
+StupidShiftLeft1Exit:
+	ret
+
+;---	StupidShiftRight1	R0 <- R0 >> R1
+
+StupidShiftRight1:
+	ld a,(StupidR1)
+	or a,a
+	jr z,StupidShiftRight1Exit ; Exit if nothing to do
+
+	ld b,a
+	ld hl,(StupidR0)
+
+StupidShiftRight1Loop:
+	ld a,h
+	or a,a			; Clear carry
+	rra
+	ld h,a
+
+	ld a,l
+	rra
+	ld l,a
+
+	djnz StupidShiftRight1Loop
+	ld (StupidR0),hl
+
+StupidShiftRight1Exit:
+	ret
+
+
+;---	MSQK			M: ( -> Flag )
+;				R: ( -> )
+;
+;	Machine-dependent ?KEY handler. Checks console input status to
+;	see if a character is available; if a character is available
+;	from the console, flag is non-zero. Otherwise, flag is zero.
+
+MSQK:	call ConSt		; Get console status.
+
+	ld hl,(StupidMP)	; Store it on the math stack.
+	inc hl			; Advance past current TOS
+	inc hl
+	ld (StupidMP),hl
+	ld (hl),a
+	inc hl
+	ld (hl),a
+
+	jp Next
+
+;---	MSK			M: ( -> Character )
+;				R: ( -> )
+;
+;	Machine-dependent (KEY) handler. Retrieves a character from the
+;	console, returning it on the math stack. Because we're using the
+;	CP/M BIOS, the system will wait for one to become available (which
+;	makes the waiting done by KEY redundant, although harmless).
+
+MSK:	call ConIn		; Get character from console.
+
+	ld hl,(StupidMP)	; Store it on the math stack.
+	inc hl			; Advance past current TOS
+	inc hl
+	ld (StupidMP),hl
+	ld (hl),a
+	inc hl
+	xor a,a			; Clear high byte
+	ld (hl),a
+
+	jp Next
+
+;---	MSQE			M: ( -> Flag
+;				R: ( -> )
+;
+;	Machine-dependent ?EMIT handler. We can't check console output
+;	status using the CP/M BIOS, so we always report the console is
+;	ready to print; that is, we always push a non-zero value on the
+;	math stack.
+
+MSQE:	ld a,#1			; Some non-zero value.
+
+	ld hl,(StupidMP)	; Store it on the math stack.
+	inc hl			; Advance past current TOS
+	inc hl
+	ld (StupidMP),hl
+	ld (hl),a
+	inc hl
+	ld (hl),a
+
+	jp Next
+
+;---	MSE			M: ( Character -> )
+;				R: ( -> )
+;
+;	Machine-dependent (EMIT) handler. Fetches a character from the
+;	top of the stack (dropping it from the stack) and displays it on
+;	the console. The CP/M BIOS waits for the console to become ready
+;	to transmit before sending the character.
+;
+;	Machine-dependent (EMIT) handler.
+
+MSE:	ld hl,(StupidMP)	; Fetch the character
+	ld c,(hl)
+
+	dec hl			; Drop it from the math stack
+	dec hl
+	ld (StupidMP),hl
+
+	call ConOut		; Print it
+
+	jp Next
+
+
+;---	MSBYE
+;
+;	Machine-dependent BYE handler.
+
+MSBYE:	jp 0
+
+;---	StupidRamBase isn't really needed for a RAM-based system.
+
+StupidRamBase:

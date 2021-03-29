@@ -1,0 +1,59 @@
+This is a version of THIRD for the PDP-8. It was done as a portability
+torture test for THIRD, as it offers a degenerate case in which the cell
+size contains one byte.
+
+Due to the use of long symbol names, the assembly version requires the use
+of a hacked-over version of Doug Jones' PAL assembler to assemble it.
+Alternatively, you can just load the .BIN file into SimH to run it.
+
+The QDL source code depends upon the system-independent sources, a PAL-8
+header and a PAL-8 trailer (yes, the trailer consists of just a dollar sign).
+Of course, this stuff is just academic until I get the compilers cleaned up
+a bit.
+
+THIRD is lives in its own private Idaho, so it does not follow any standards
+at all. You'll need to stare at the documentation a while before being able
+to do anything. The documentation is, of course, not extremely informative.
+
+The program is entered at 200. When you start THIRD, it displays a banner
+giving the word size (in bytes), cell size (in bytes), and number of bits in
+a cell. It then displays the OK prompt and accepts commands. Oh yeah; I
+forgot to mention that all I/O is in hex.
+
+VLIST can be used to display the names of the words in the dictionary. It
+won't do you much good without the documentation however - again, it doesn't
+follow any standard.
+
+Among the things THIRD doesn't understand is .". Consequently, to display
+"HELLO WORLD!" you need to define a string constant and TYPE it.
+
+Here's an example running THIRD under SimH to display HELLO WORLD!:
+
+% pdp8
+
+PDP-8 simulator V3.0-2
+sim> load third.bin
+sim> go 200
+THIRD V0.0 CELLSIZE 001 WORDSIZE 001 BITS 00C 
+
+OK
+$ BOOGER HELLO WORLD!
+
+OK
+BOOGER TYPE
+HELLO WORLD!
+OK
+
+The math and return stacks share a 128 word chunk of memory. The math stack
+starts at the bottom of the memory and grows up, while the return stack
+starts at the bottom and grows down. You therefore have a stack depth of
+128, but it's shared between the math and return stacks. There is no stack
+checking in THIRD, so watch out!
+
+The PDP-8 version of THIRD was intended to test the portability of THIRD,
+not to have a PDP-8 FORTH. Consequently, no attempt has been made to
+optimize either the code or the memory usage of THIRD. THIRD does not use
+extended memory; it loads and runs in field 0. There are about 832 words of
+memory remaining for you to play in after THIRD has been loaded.
+
+I believe, but have no way of verifying, that THIRD will run on a PDP-5.
