@@ -29,3 +29,5 @@ The high-level bits of THIRD have been executed on processors ranging from
 32 to 8 bits with both endianisms. StupidCode is newer; although I have
 several StupidCode compilers, the only ones to generate code that has
 actually been executed are the Z80 and PDP-8 versions.
+
+ - Roger Ivie

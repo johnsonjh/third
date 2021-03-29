@@ -1,14 +1,14 @@
-/* file:    pal.c
+/* file:    PAL.C
 
-   purpose: a 2 pass PDP-8 pal-like assembler
+   Purpose: A 2-pass PDP-8 PAL-like assembler
 
-   author:  Douglas Jones <jones@cs.uiowa.edu> -- built basic bits
-            Rich Coon <coon@convexw.convex.com> -- added enough handle OS/278
-            Bernhard Baehr <b.baehr@madsack.de> -- patch to correct checksum
+   Author:  Douglas Jones <jones@cs.uiowa.edu> -- Built basic bits
+            Rich Coon <coon@convexw.convex.com> -- Added enough handle OS/278
+            Bernhard Baehr <b.baehr@madsack.de> -- Patch to correct checksum
             Roger Ivie <anachronda@hotmail.com> -- Extended SYMLEN to 63,
               opened .BIN file "wb".
 
-   disclaimer:  This assembler accepts a subset of the PAL 8 assembly language.
+   Disclaimer:  This assembler accepts a subset of PAL-8 assembly language.
 	It was written as a quick hack in order to download software into my
 	bare-bones PDP-8 system, and no effort has been made to apply sound
 	software engineering techniques in its design.  See the symbol table
@@ -17,7 +17,7 @@
 	or see DEC's "Introduction to Programming (for the PDP/8)" or a
 	lower level introduction to the assembly language.
 
-   use: After assembly on a UNIX system, this program should be stored as
+   Use: After assembly on a UNIX system, this program should be stored as
 	the pal command.  This program uses the following file name extensions
 
 		.pal	source code (input)
@@ -30,7 +30,7 @@
 		-d	dump the symbol table at end of assembly
 		-r	produce output in rim format (default is bin format)
 
-   known bugs:  Only a minimal effort has been made to keep the listing
+   Known bugs:  Only a minimal effort has been made to keep the listing
 	format anything like the PAL-8 listing format.  It screams too loud
 	for off-page addresses (a quote mark would suffice), and it doesn't
 	detect off-page addresses it can't fix (it should scream about them).
@@ -40,11 +40,11 @@
 	call fopen(objname, "w") must be rewritten as fopen(objname, "wb").
 	(This change must be made on or around line 1175 in this file.)
 
-   warrantee:  If you don't like it the way it works or if it doesn't work,
+   Warranty:  If you don't like it the way it works or if it doesn't work,
 	that's tough.  You're welcome to fix it yourself.  That's what you
 	get for using free software.
 
-   copyright notice:  I wrote this and gave it away for free; if you want to
+   Copyright notice:  I wrote this and gave it away for free; if you want to
 	make changes and give away the result for free, that's fine with me.
 	If you can fix it enough that you can sell it, ok, but don't put any
 	limits on the purchaser's right to do the same.  All the above aside,

@@ -57,3 +57,5 @@ extended memory; it loads and runs in field 0. There are about 832 words of
 memory remaining for you to play in after THIRD has been loaded.
 
 I believe, but have no way of verifying, that THIRD will run on a PDP-5.
+
+ - Roger Ivie

@@ -1,2 +1,4 @@
 I'm afraid I do not yet have documentation for QDL, StupidCode,
 or the compilers. I don't yet have a glossary for QDL, sorry.
+
+ - Roger Ivie
