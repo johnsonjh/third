@@ -1,0 +1,9 @@
+This is Roger Ivie's THIRD, a portable FORTH-like system.
+
+It was previosuly available via Roger Ivie's web site at
+http://anachronda.homeunix.com:8000/~rivie/third/ which,
+unfortunately, has been unavailable for several years.
+
+I am not the author of 
+
+Jeffrey H. Johnson <trnsz@pobox.com>) a
