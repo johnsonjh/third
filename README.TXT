@@ -31,3 +31,5 @@ several StupidCode compilers, the only ones to generate code that has
 actually been executed are the Z80 and PDP-8 versions.
 
  - Roger Ivie
+
+Codacy Badge
